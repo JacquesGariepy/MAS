@@ -1,0 +1,567 @@
+"""
+Cognitive agent with LLM-based reasoning
+"""
+
+import json
+from typing import Dict, List, Any, Optional
+from uuid import UUID
+from datetime import datetime
+
+from src.core.agents.base_agent import BaseAgent
+from src.services.llm_service import LLMService
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+class CognitiveAgent(BaseAgent):
+    """Cognitive agent with advanced reasoning capabilities"""
+    
+    def __init__(
+        self,
+        agent_id: UUID,
+        name: str,
+        role: str,
+        capabilities: List[str],
+        llm_service: LLMService,
+        **kwargs
+    ):
+        super().__init__(agent_id, name, role, capabilities, llm_service, **kwargs)
+        
+        # Cognitive components
+        self.reasoning_depth = kwargs.get('reasoning_depth', 3)
+        self.planning_horizon = kwargs.get('planning_horizon', 5)
+        self.reflection_frequency = kwargs.get('reflection_frequency', 10)
+        
+        # Memory components
+        self.episodic_memory = []
+        self.semantic_memory = []
+        self.procedural_memory = {}
+        
+        # Learning parameters
+        self.learning_rate = kwargs.get('learning_rate', 0.1)
+        self.exploration_rate = kwargs.get('exploration_rate', 0.2)
+        
+        # Reasoning context
+        self.reasoning_history = []
+        self.plan_library = {}
+        self.current_plan = None
+        
+        # Metacognition
+        self.confidence_threshold = kwargs.get('confidence_threshold', 0.7)
+        self.uncertainty_buffer = []
+    
+    async def perceive(self, environment: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhanced perception with semantic interpretation"""
+        
+        # Get raw perceptions
+        raw_perceptions = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "environment_state": environment,
+            "working_memory": self.context.working_memory[-5:],  # Recent items
+            "current_task": self.context.current_task,
+            "message_count": self._message_queue.qsize()
+        }
+        
+        # Use LLM to interpret perceptions
+        interpretation_prompt = f"""
+        You are {self.name}, a {self.role} agent.
+        
+        Current beliefs: {json.dumps(self.bdi.beliefs, indent=2)}
+        Current desires: {self.bdi.desires}
+        Current intentions: {self.bdi.intentions}
+        
+        Raw perceptions: {json.dumps(raw_perceptions, indent=2)}
+        
+        Analyze these perceptions and extract:
+        1. Important changes in the environment
+        2. Opportunities for achieving desires
+        3. Potential threats or obstacles
+        4. Relevant patterns or trends
+        
+        Return a JSON object with your analysis.
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=interpretation_prompt,
+                system_prompt="You are an intelligent agent analyzing your environment. Be concise and focus on actionable insights.",
+                temperature=0.3,
+                response_format="json"
+            )
+            
+            interpreted_perceptions = json.loads(response)
+            
+            # Add to episodic memory
+            self.episodic_memory.append({
+                "timestamp": raw_perceptions["timestamp"],
+                "perceptions": interpreted_perceptions,
+                "context": self.context.current_task
+            })
+            
+            # Limit episodic memory size
+            if len(self.episodic_memory) > 100:
+                self.episodic_memory = self.episodic_memory[-100:]
+            
+            return interpreted_perceptions
+            
+        except Exception as e:
+            logger.error(f"Failed to interpret perceptions: {str(e)}")
+            return {"error": "perception_failed", "raw": raw_perceptions}
+    
+    async def deliberate(self) -> List[str]:
+        """Advanced deliberation with planning and reasoning"""
+        
+        # Check if reflection is needed
+        if self.metrics["actions_executed"] % self.reflection_frequency == 0:
+            await self._reflect()
+        
+        deliberation_prompt = f"""
+        You are {self.name}, a {self.role} agent.
+        
+        Current state:
+        - Beliefs: {json.dumps(self.bdi.beliefs, indent=2)}
+        - Desires: {self.bdi.desires}
+        - Current intentions: {self.bdi.intentions}
+        - Current plan: {self.current_plan}
+        - Capabilities: {self.capabilities}
+        - Available tools: {list(self.tools.keys())}
+        
+        Recent reasoning: {self.reasoning_history[-3:] if self.reasoning_history else 'None'}
+        
+        Task: Deliberate on what intentions to form or modify.
+        
+        Consider:
+        1. Which desires are most important and achievable?
+        2. What intentions would best serve these desires?
+        3. Are current intentions still valid and making progress?
+        4. Should any intentions be dropped or modified?
+        5. What is the optimal sequence of actions?
+        
+        Use chain-of-thought reasoning (depth: {self.reasoning_depth}).
+        
+        Return a JSON object with:
+        - reasoning: Your step-by-step reasoning
+        - new_intentions: List of new intentions to adopt
+        - drop_intentions: List of intentions to drop
+        - confidence: Your confidence level (0-1)
+        - plan_sketch: High-level plan for achieving intentions
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=deliberation_prompt,
+                system_prompt="You are an intelligent agent making strategic decisions. Think step by step.",
+                temperature=0.5,
+                response_format="json"
+            )
+            
+            result = json.loads(response)
+            
+            # Record reasoning
+            self.reasoning_history.append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "reasoning": result.get("reasoning", ""),
+                "confidence": result.get("confidence", 0.5)
+            })
+            
+            # Handle low confidence
+            if result.get("confidence", 0) < self.confidence_threshold:
+                self.uncertainty_buffer.append(result)
+                if len(self.uncertainty_buffer) > 3:
+                    # Too much uncertainty, request help or explore
+                    result["new_intentions"].append("seek_clarification")
+            
+            # Update current plan
+            if result.get("plan_sketch"):
+                self.current_plan = result["plan_sketch"]
+            
+            # Drop intentions
+            for intention in result.get("drop_intentions", []):
+                await self.drop_intention(intention)
+            
+            return result.get("new_intentions", [])
+            
+        except Exception as e:
+            logger.error(f"Deliberation failed: {str(e)}")
+            # Fallback to simple goal selection
+            if self.bdi.desires and not self.bdi.intentions:
+                return [f"achieve_{self.bdi.desires[0]}"]
+            return []
+    
+    async def act(self) -> List[Dict[str, Any]]:
+        """Generate actions based on intentions with planning"""
+        
+        actions = []
+        
+        for intention in self.bdi.intentions[:]:  # Copy to allow modification
+            # Check if we have a plan for this intention
+            if intention not in self.plan_library:
+                plan = await self._create_plan(intention)
+                if plan:
+                    self.plan_library[intention] = plan
+                else:
+                    # Can't create plan, drop intention
+                    await self.drop_intention(intention)
+                    continue
+            
+            # Execute next step of plan
+            plan = self.plan_library[intention]
+            if plan["steps"]:
+                next_step = plan["steps"][0]
+                
+                # Check preconditions
+                if await self._check_preconditions(next_step):
+                    action = await self._step_to_action(next_step)
+                    if action:
+                        actions.append(action)
+                        
+                        # Remove completed step
+                        plan["steps"].pop(0)
+                        
+                        # Check if plan is complete
+                        if not plan["steps"]:
+                            await self.drop_intention(intention)
+                            del self.plan_library[intention]
+                            
+                            # Record success
+                            self.procedural_memory[intention] = {
+                                "success": True,
+                                "plan": plan["original_plan"],
+                                "execution_time": datetime.utcnow().isoformat()
+                            }
+                else:
+                    # Preconditions not met, try to achieve them
+                    prerequisite_action = await self._achieve_preconditions(next_step)
+                    if prerequisite_action:
+                        actions.append(prerequisite_action)
+        
+        return actions
+    
+    async def _create_plan(self, intention: str) -> Optional[Dict[str, Any]]:
+        """Create a plan to achieve an intention"""
+        
+        # Check procedural memory for successful plans
+        if intention in self.procedural_memory:
+            previous = self.procedural_memory[intention]
+            if previous.get("success"):
+                return {
+                    "steps": previous["plan"]["steps"].copy(),
+                    "original_plan": previous["plan"]
+                }
+        
+        planning_prompt = f"""
+        You are {self.name}, a {self.role} agent.
+        
+        Intention: {intention}
+        Current beliefs: {json.dumps(self.bdi.beliefs, indent=2)}
+        Available tools: {list(self.tools.keys())}
+        Capabilities: {self.capabilities}
+        
+        Create a step-by-step plan to achieve this intention.
+        
+        Each step should specify:
+        - action: The type of action (tool_call, send_message, update_belief, etc.)
+        - description: What the step accomplishes
+        - tool: Tool name if action is tool_call
+        - params: Parameters for the action
+        - preconditions: What must be true before this step
+        - expected_effects: What will be true after this step
+        
+        Plan for {self.planning_horizon} steps maximum.
+        
+        Return a JSON object with:
+        - feasible: boolean indicating if the intention is achievable
+        - confidence: your confidence level (0-1)
+        - steps: array of step objects
+        - risks: potential risks or failure points
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=planning_prompt,
+                system_prompt="You are an intelligent agent creating actionable plans. Be specific and realistic.",
+                temperature=0.4,
+                response_format="json"
+            )
+            
+            result = json.loads(response)
+            
+            if result.get("feasible", False) and result.get("confidence", 0) >= 0.5:
+                return {
+                    "steps": result["steps"],
+                    "original_plan": result,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            
+            logger.warning(f"Plan for {intention} not feasible or low confidence")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to create plan for {intention}: {str(e)}")
+            return None
+    
+    async def _check_preconditions(self, step: Dict[str, Any]) -> bool:
+        """Check if preconditions for a step are met"""
+        
+        preconditions = step.get("preconditions", {})
+        if not preconditions:
+            return True
+        
+        for key, expected_value in preconditions.items():
+            actual_value = self.bdi.beliefs.get(key)
+            if actual_value != expected_value:
+                return False
+        
+        return True
+    
+    async def _achieve_preconditions(self, step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Try to achieve preconditions for a step"""
+        
+        preconditions = step.get("preconditions", {})
+        
+        for key, expected_value in preconditions.items():
+            actual_value = self.bdi.beliefs.get(key)
+            if actual_value != expected_value:
+                # Simple strategy: use appropriate tool or update belief
+                if key.startswith("has_"):
+                    # Need to acquire something
+                    resource = key[4:]
+                    return {
+                        "type": "tool_call",
+                        "tool": "acquire_resource",
+                        "params": {"resource": resource}
+                    }
+                else:
+                    # Direct belief update (if allowed)
+                    return {
+                        "type": "update_belief",
+                        "beliefs": {key: expected_value}
+                    }
+        
+        return None
+    
+    async def _step_to_action(self, step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Convert plan step to executable action"""
+        
+        action_type = step.get("action")
+        
+        if action_type == "tool_call":
+            return {
+                "type": "tool_call",
+                "tool": step.get("tool"),
+                "params": step.get("params", {})
+            }
+        elif action_type == "send_message":
+            return {
+                "type": "send_message",
+                "receiver": step.get("receiver"),
+                "content": step.get("content", {}),
+                "performative": step.get("performative", "inform")
+            }
+        elif action_type == "update_belief":
+            return {
+                "type": "update_belief",
+                "beliefs": step.get("beliefs", {})
+            }
+        else:
+            logger.warning(f"Unknown action type in step: {action_type}")
+            return None
+    
+    async def _reflect(self):
+        """Reflect on past actions and learn"""
+        
+        reflection_prompt = f"""
+        You are {self.name}, reflecting on your recent performance.
+        
+        Recent history:
+        - Actions executed: {self.metrics['actions_executed']}
+        - Tasks completed: {self.metrics['tasks_completed']}
+        - Errors: {self.metrics['errors']}
+        - Recent episodes: {self.episodic_memory[-5:] if self.episodic_memory else 'None'}
+        
+        Current state:
+        - Beliefs: {json.dumps(self.bdi.beliefs, indent=2)}
+        - Desires: {self.bdi.desires}
+        
+        Reflect on:
+        1. What strategies have been successful?
+        2. What patterns do you notice in failures?
+        3. How can you improve your performance?
+        4. Should you adjust your desires or approach?
+        
+        Return a JSON object with:
+        - insights: Key insights from reflection
+        - belief_updates: Beliefs to update based on reflection
+        - strategy_adjustments: Changes to make in approach
+        - confidence_adjustment: How to adjust confidence threshold
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=reflection_prompt,
+                system_prompt="You are reflecting on your performance to improve. Be honest and constructive.",
+                temperature=0.6,
+                response_format="json"
+            )
+            
+            result = json.loads(response)
+            
+            # Apply insights
+            if result.get("belief_updates"):
+                await self.update_beliefs(result["belief_updates"])
+            
+            if result.get("confidence_adjustment"):
+                self.confidence_threshold = max(0.3, min(0.9, 
+                    self.confidence_threshold + result["confidence_adjustment"]))
+            
+            # Store insights in semantic memory
+            self.semantic_memory.append({
+                "type": "reflection",
+                "insights": result.get("insights", []),
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            logger.info(f"Agent {self.name} completed reflection")
+            
+        except Exception as e:
+            logger.error(f"Reflection failed: {str(e)}")
+    
+    async def handle_message(self, message: Any):
+        """Handle incoming messages with understanding"""
+        
+        # Add to conversation history
+        self.context.conversation_history.append({
+            "type": "received",
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+        # Interpret message
+        interpretation_prompt = f"""
+        You are {self.name}, a {self.role} agent.
+        
+        You received a message:
+        From: {message.sender}
+        Performative: {message.performative}
+        Content: {json.dumps(message.content)}
+        
+        Current context:
+        - Current task: {self.context.current_task}
+        - Intentions: {self.bdi.intentions}
+        
+        Interpret this message and determine:
+        1. What is the sender's intent?
+        2. How does this relate to your current goals?
+        3. What beliefs should be updated?
+        4. Should you modify your intentions?
+        5. What response is appropriate?
+        
+        Return a JSON object with your analysis and proposed response.
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=interpretation_prompt,
+                system_prompt="You are interpreting communication to coordinate effectively.",
+                temperature=0.4,
+                response_format="json"
+            )
+            
+            result = json.loads(response)
+            
+            # Update beliefs based on message
+            if result.get("belief_updates"):
+                await self.update_beliefs(result["belief_updates"])
+            
+            # Modify intentions if needed
+            if result.get("intention_changes"):
+                for change in result["intention_changes"]:
+                    if change["action"] == "add":
+                        await self.commit_to_intention(change["intention"])
+                    elif change["action"] == "remove":
+                        await self.drop_intention(change["intention"])
+            
+            # Generate response if appropriate
+            if result.get("response"):
+                response_action = {
+                    "type": "send_message",
+                    "receiver": message.sender,
+                    "content": result["response"]["content"],
+                    "performative": result["response"].get("performative", "inform")
+                }
+                
+                # Execute response
+                await self._execute_action(response_action)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle message: {str(e)}")
+    
+    async def handle_task(self, task: Any):
+        """Handle assigned tasks intelligently"""
+        
+        # Analyze task
+        task_analysis_prompt = f"""
+        You are {self.name}, a {self.role} agent.
+        
+        You have been assigned a task:
+        {json.dumps(task.dict() if hasattr(task, 'dict') else task, indent=2)}
+        
+        Current state:
+        - Capabilities: {self.capabilities}
+        - Current desires: {self.bdi.desires}
+        - Current intentions: {self.bdi.intentions}
+        
+        Analyze this task:
+        1. Can you complete this task with your capabilities?
+        2. Does it align with your current goals?
+        3. What desires should be added to pursue this task?
+        4. What is the priority relative to current intentions?
+        5. What resources or collaboration might be needed?
+        
+        Return a JSON object with your analysis.
+        """
+        
+        try:
+            response = await self.llm_service.generate(
+                prompt=task_analysis_prompt,
+                system_prompt="You are analyzing a task assignment. Be thorough and realistic.",
+                temperature=0.3,
+                response_format="json"
+            )
+            
+            result = json.loads(response)
+            
+            if result.get("can_complete", False):
+                # Add task-related desires
+                for desire in result.get("task_desires", []):
+                    await self.add_desire(desire)
+                
+                # Commit to task completion
+                await self.commit_to_intention(f"complete_task_{task.id if hasattr(task, 'id') else 'current'}")
+                
+                # Update beliefs
+                await self.update_beliefs({
+                    "current_task": task,
+                    "task_priority": result.get("priority", "medium"),
+                    "task_requirements": result.get("requirements", {})
+                })
+                
+                logger.info(f"Agent {self.name} accepted task")
+            else:
+                # Can't complete task, notify or delegate
+                logger.warning(f"Agent {self.name} cannot complete task")
+                
+                # Send notification
+                await self._execute_action({
+                    "type": "send_message",
+                    "receiver": "task_manager",
+                    "content": {
+                        "task_id": task.id if hasattr(task, 'id') else None,
+                        "reason": result.get("reason", "Insufficient capabilities"),
+                        "missing_capabilities": result.get("missing_capabilities", [])
+                    },
+                    "performative": "refuse"
+                })
+                
+        except Exception as e:
+            logger.error(f"Failed to analyze task: {str(e)}")

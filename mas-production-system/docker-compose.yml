@@ -1,0 +1,58 @@
+version: '3.8'
+services:
+  core:
+    build: ./services/core
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - DATABASE_URL=postgresql://user:pass@db:5432/mas
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key
+    volumes:
+      - ./services/core/src:/app/src  # Hot reload en dev
+      - ./services/core/alembic:/app/alembic
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mas
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # Exposé pour debug/admin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"  # Exposé pour debug/admin
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:

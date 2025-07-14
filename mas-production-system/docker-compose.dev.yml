@@ -1,0 +1,108 @@
+version: '3.8'
+
+# Docker Compose pour le développement
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      # Application
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key-change-in-production
+      
+      # Database
+      - DATABASE_URL=postgresql://user:pass@db:5432/mas
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      
+      # LLM (configurable via .env)
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4-turbo-preview}
+      
+    volumes:
+      # Mount source code pour hot reload
+      - ./services/core/src:/app/src
+      - ./services/core/alembic:/app/alembic
+      - ./services/core/alembic.ini:/app/alembic.ini
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting application...' &&
+        uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mas
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optionnel : PgAdmin pour gérer la DB
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mas.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    profiles:
+      - tools
+
+  # Optionnel : RedisInsight pour gérer Redis
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+    profiles:
+      - tools
+
+volumes:
+  postgres-data:
+  redis-data:

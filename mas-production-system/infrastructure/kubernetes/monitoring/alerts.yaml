@@ -1,0 +1,90 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mas-alerts
+  namespace: mas-system
+spec:
+  groups:
+  - name: mas.agent.rules
+    interval: 30s
+    rules:
+    - alert: AgentDown
+      expr: up{job="mas-agents"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Agent {{ $labels.agent_name }} is down"
+        description: "Agent {{ $labels.agent_name }} has been down for more than 5 minutes"
+        
+    - alert: AgentHighErrorRate
+      expr: |
+        rate(agent_errors_total[5m]) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High error rate for agent {{ $labels.agent_name }}"
+        description: "Agent {{ $labels.agent_name }} has error rate of {{ $value }} errors/sec"
+        
+    - alert: AgentMemoryHigh
+      expr: |
+        agent_memory_usage_bytes / agent_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Agent {{ $labels.agent_name }} memory usage is high"
+        description: "Agent {{ $labels.agent_name }} is using {{ $value | humanizePercentage }} of memory limit"
+        
+  - name: mas.system.rules
+    interval: 30s
+    rules:
+    - alert: HighAPILatency
+      expr: |
+        histogram_quantile(0.95, 
+          sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+        ) > 1
+      for: 10m
+      labels:
+        severity: warning
+        team: api
+      annotations:
+        summary: "High API latency on endpoint {{ $labels.endpoint }}"
+        description: "95th percentile latency is {{ $value }}s for endpoint {{ $labels.endpoint }}"
+        
+    - alert: DatabaseConnectionPoolExhausted
+      expr: |
+        database_connection_pool_size - database_connection_pool_available < 5
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Database connection pool nearly exhausted"
+        description: "Only {{ $value }} connections available in pool"
+        
+    - alert: HighMessageQueueBacklog
+      expr: |
+        message_queue_length > 10000
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Message queue backlog is high"
+        description: "Message queue has {{ $value }} pending messages"
+        
+    - alert: LowDiskSpace
+      expr: |
+        (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+      for: 5m
+      labels:
+        severity: critical
+        team: infrastructure
+      annotations:
+        summary: "Low disk space on {{ $labels.instance }}"
+        description: "Less than 10% disk space remaining on {{ $labels.instance }}"

@@ -1,0 +1,675 @@
+openapi: 3.0.3
+info:
+  title: Multi-Agent System API
+  description: |
+    Production-ready Multi-Agent System API with complete BDI architecture,
+    organization management, negotiation protocols, and tool execution.
+  version: 1.0.0
+  contact:
+    name: MAS Support
+    email: support@mas-system.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.mas-system.com
+    description: Production server
+  - url: https://staging-api.mas-system.com
+    description: Staging server
+  - url: http://localhost:8000
+    description: Development server
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /api/v1/agents:
+    get:
+      summary: List agents
+      operationId: listAgents
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: agent_type
+          in: query
+          schema:
+            type: string
+            enum: [reflexive, cognitive, hybrid]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [idle, working, negotiating, coordinating, error]
+        - name: organization_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create agent
+      operationId: createAgent
+      tags:
+        - Agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreate'
+      responses:
+        '201':
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/agents/{agent_id}:
+    get:
+      summary: Get agent details
+      operationId: getAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update agent
+      operationId: updateAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentUpdate'
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete agent
+      operationId: deleteAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/agents/{agent_id}/start:
+    post:
+      summary: Start agent
+      operationId: startAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/messages:
+    post:
+      summary: Send message
+      operationId: sendMessage
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/organizations:
+    get:
+      summary: List organizations
+      operationId: listOrganizations
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: org_type
+          in: query
+          schema:
+            type: string
+            enum: [hierarchy, market, network, team]
+      responses:
+        '200':
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationList'
+
+    post:
+      summary: Create organization
+      operationId: createOrganization
+      tags:
+        - Organizations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationResponse'
+
+  /api/v1/negotiations:
+    post:
+      summary: Start negotiation
+      operationId: startNegotiation
+      tags:
+        - Negotiations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NegotiationCreate'
+      responses:
+        '201':
+          description: Negotiation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NegotiationResponse'
+
+  /api/v1/auctions:
+    post:
+      summary: Create auction
+      operationId: createAuction
+      tags:
+        - Auctions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuctionCreate'
+      responses:
+        '201':
+          description: Auction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResponse'
+
+  /api/v1/tools/execute:
+    post:
+      summary: Execute tool
+      operationId: executeTool
+      tags:
+        - Tools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecute'
+      responses:
+        '200':
+          description: Tool executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPageParam:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    AgentCreate:
+      type: object
+      required:
+        - name
+        - role
+        - agent_type
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        role:
+          type: string
+          minLength: 1
+          maxLength: 50
+        agent_type:
+          type: string
+          enum: [reflexive, cognitive, hybrid]
+        capabilities:
+          type: array
+          items:
+            type: string
+        initial_beliefs:
+          type: object
+        initial_desires:
+          type: array
+          items:
+            type: string
+        organization_id:
+          type: string
+          format: uuid
+        configuration:
+          type: object
+
+    AgentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+        agent_type:
+          type: string
+        status:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AgentDetail:
+      allOf:
+        - $ref: '#/components/schemas/AgentResponse'
+        - type: object
+          properties:
+            beliefs:
+              type: object
+            desires:
+              type: array
+              items:
+                type: string
+            intentions:
+              type: array
+              items:
+                type: string
+            metrics:
+              type: object
+              properties:
+                total_actions:
+                  type: integer
+                successful_actions:
+                  type: integer
+                success_rate:
+                  type: number
+
+    AgentUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        configuration:
+          type: object
+
+    AgentList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        per_page:
+          type: integer
+        pages:
+          type: integer
+
+    MessageCreate:
+      type: object
+      required:
+        - sender_id
+        - receiver_id
+        - performative
+        - content
+      properties:
+        sender_id:
+          type: string
+          format: uuid
+        receiver_id:
+          type: string
+          format: uuid
+        performative:
+          type: string
+          enum: [inform, request, propose, accept, reject, query, subscribe]
+        content:
+          type: object
+        protocol:
+          type: string
+          default: fipa-acl
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sender_id:
+          type: string
+          format: uuid
+        receiver_id:
+          type: string
+          format: uuid
+        performative:
+          type: string
+        content:
+          type: object
+        protocol:
+          type: string
+        conversation_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    OrganizationCreate:
+      type: object
+      required:
+        - name
+        - org_type
+      properties:
+        name:
+          type: string
+        org_type:
+          type: string
+          enum: [hierarchy, market, network, team]
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              permissions:
+                type: array
+                items:
+                  type: string
+              obligations:
+                type: array
+                items:
+                  type: string
+              capabilities:
+                type: array
+                items:
+                  type: string
+
+    OrganizationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        org_type:
+          type: string
+        member_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    OrganizationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationResponse'
+        total:
+          type: integer
+
+    NegotiationCreate:
+      type: object
+      required:
+        - participants
+        - subject
+        - negotiation_type
+      properties:
+        participants:
+          type: array
+          items:
+            type: string
+            format: uuid
+        subject:
+          type: object
+        negotiation_type:
+          type: string
+          enum: [bilateral, multilateral, mediated, integrative]
+
+    NegotiationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        negotiation_type:
+          type: string
+        status:
+          type: string
+        participants:
+          type: array
+          items:
+            type: string
+            format: uuid
+        started_at:
+          type: string
+          format: date-time
+
+    AuctionCreate:
+      type: object
+      required:
+        - auction_type
+        - item_description
+        - starting_price
+      properties:
+        auction_type:
+          type: string
+          enum: [english, dutch, vickrey, double]
+        item_description:
+          type: string
+        starting_price:
+          type: number
+          minimum: 0
+        reserve_price:
+          type: number
+          minimum: 0
+        duration_minutes:
+          type: integer
+          minimum: 1
+
+    AuctionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        auction_type:
+          type: string
+        status:
+          type: string
+        current_price:
+          type: number
+        ends_at:
+          type: string
+          format: date-time
+
+    ToolExecute:
+      type: object
+      required:
+        - agent_id
+        - tool_name
+        - parameters
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        parameters:
+          type: object
+
+    ToolResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: string
+        metadata:
+          type: object
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
