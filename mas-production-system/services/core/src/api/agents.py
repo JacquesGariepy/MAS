@@ -187,7 +187,15 @@ async def list_agents(
     
     # Cache result
     import json
-    await cache_set(cache_key, json.dumps(agent_list.dict()), expire=300)  # 5 minutes
+    # Convert to dict with JSON serialization support (mode='json' converts UUID to str)
+    agent_list_dict = {
+        "items": [item.model_dump(mode='json') for item in agent_list.items],
+        "total": agent_list.total,
+        "page": agent_list.page,
+        "per_page": agent_list.per_page,
+        "pages": agent_list.pages
+    }
+    await cache_set(cache_key, agent_list_dict, expire=300)  # 5 minutes
     
     return agent_list
 
@@ -321,9 +329,9 @@ async def delete_agent(
         # Stop agent if running
         await agent_service.stop_agent(agent)
         
-        # Soft delete
+        # Soft delete - mark as inactive with idle status
         agent.is_active = False
-        agent.status = 'deleted'
+        agent.status = 'idle'  # Use valid status instead of 'deleted'
         
         await db.commit()
         
@@ -586,5 +594,43 @@ async def get_agent_metrics(
     
     # Get metrics
     metrics = await agent_service.get_agent_metrics(agent)
-    
     return metrics
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(
+    agent_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    agent_service: AgentService = Depends()
+):
+    """Delete an agent"""
+    
+    # Get agent
+    stmt = select(Agent).where(
+        and_(
+            Agent.id == agent_id,
+            Agent.owner_id == current_user.id
+        )
+    )
+    result = await db.execute(stmt)
+    agent = result.scalar_one_or_none()
+    
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+    
+    # Stop agent if running
+    runtime = agent_service.runtime
+    if await runtime.is_agent_running(agent.id):
+        await runtime.stop_agent(agent.id)
+    
+    # Delete agent from database
+    await db.delete(agent)
+    await db.commit()
+    
+    # Clear cache
+    await cache_delete(f"user_agents:{current_user.id}")
+    
+    logger.info(f"Deleted agent {agent_id} for user {current_user.id}")

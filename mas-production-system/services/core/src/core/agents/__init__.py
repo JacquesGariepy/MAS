@@ -120,6 +120,10 @@ class AgentRuntime:
     def list_running_agents(self) -> list[UUID]:
         """List all running agent IDs"""
         return list(self.running_agents.keys())
+    
+    async def is_agent_running(self, agent_id: UUID) -> bool:
+        """Check if an agent is running"""
+        return agent_id in self.running_agents
 
 # Global runtime instance
 _agent_runtime: Optional[AgentRuntime] = None

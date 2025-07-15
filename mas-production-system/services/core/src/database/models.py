@@ -237,28 +237,29 @@ class Task(Base):
     __tablename__ = 'tasks'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'))
+    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
+    title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
-    requirements = Column(JSONB, default=dict, nullable=False)
+    task_type = Column(String(50), nullable=False)
     
     status = Column(String(20), default='pending', nullable=False)
-    priority = Column(Integer, default=5, nullable=False)
+    priority = Column(String(20), default='medium', nullable=False)
     
-    deadline = Column(DateTime(timezone=True))
-    assigned_agents = Column(ARRAY(UUID(as_uuid=True)), default=list)
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey('agents.id', ondelete='SET NULL'))
+    task_metadata = Column(JSONB, default=dict, nullable=False)
     
     result = Column(JSONB)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    started_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True))
     
     __table_args__ = (
         Index('ix_task_status_priority', 'status', 'priority'),
-        CheckConstraint("status IN ('pending', 'assigned', 'in_progress', 'completed', 'failed', 'cancelled')", 
+        CheckConstraint("status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')", 
                         name='check_task_status'),
-        CheckConstraint('priority >= 1 AND priority <= 10', name='check_priority_range'),
+        CheckConstraint("priority IN ('low', 'medium', 'high', 'critical')", name='check_task_priority'),
     )
 
 class Negotiation(Base):

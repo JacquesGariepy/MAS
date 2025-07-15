@@ -12,7 +12,7 @@ class AgentCreate(BaseModel):
     initial_desires: Optional[List[str]] = []
     reactive_rules: Optional[Dict] = {}
     configuration: Optional[Dict] = {}
-    organization_id: Optional[UUID]
+    organization_id: Optional[UUID] = None
 
 class AgentUpdate(BaseModel):
     name: Optional[str]

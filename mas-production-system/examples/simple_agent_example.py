@@ -15,8 +15,8 @@ def main():
     # 1. Créer un utilisateur
     print("1️⃣ Création utilisateur...")
     register_data = {
-        "username": "test_user7",
-        "email": "test7@example.com", 
+        "username": "test_user",
+        "email": "test@example.com", 
         "password": "password123"
     }
     
@@ -62,7 +62,7 @@ def main():
     }
     
     response = requests.post(
-        f"{API_URL}/api/v1/agents/agents",
+        f"{API_URL}/api/v1/agents",
         json=agent_data,
         headers=headers
     )
@@ -79,7 +79,7 @@ def main():
     # 4. Démarrer l'agent
     print("\n4️⃣ Démarrage de l'agent...")
     response = requests.post(
-        f"{API_URL}/api/v1/agents/agents/{agent_id}/start",
+        f"{API_URL}/api/v1/agents/{agent_id}/start",
         headers=headers
     )
     print("✅ Agent démarré")
@@ -97,10 +97,16 @@ def main():
     }
     
     response = requests.post(
-        f"{API_URL}/api/v1/tasks/tasks",
+        f"{API_URL}/api/v1/v1/tasks",
         json=task_data,
         headers=headers
     )
+    
+    if response.status_code != 201:
+        print(f"❌ Erreur lors de la création de la tâche: {response.status_code}")
+        print(f"   Détails: {response.text}")
+        return
+        
     task = response.json()
     task_id = task["id"]
     print(f"📨 Question envoyée: '{question}'")
@@ -110,7 +116,7 @@ def main():
     time.sleep(3)  # Attendre que l'agent traite
     
     response = requests.get(
-        f"{API_URL}/api/v1/tasks/tasks/{task_id}",
+        f"{API_URL}/api/v1/v1/tasks/{task_id}",
         headers=headers
     )
     result = response.json()
@@ -126,7 +132,7 @@ def main():
     # 7. Afficher les détails de l'agent
     print("\n7️⃣ Détails de l'agent:")
     response = requests.get(
-        f"{API_URL}/api/v1/agents/agents/{agent_id}",
+        f"{API_URL}/api/v1/agents/{agent_id}",
         headers=headers
     )
     agent_details = response.json()

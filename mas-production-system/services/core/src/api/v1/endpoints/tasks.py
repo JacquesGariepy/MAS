@@ -16,7 +16,7 @@ from src.api.dependencies import get_current_user
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-@router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     task_data: TaskCreate,
     current_user: User = Depends(get_current_user),
@@ -49,7 +49,7 @@ async def create_task(
         status="pending",
         owner_id=current_user.id,
         assigned_to=task_data.assigned_to,
-        metadata=task_data.metadata or {},
+        task_metadata=task_data.metadata or {},
         created_at=datetime.utcnow()
     )
     
@@ -67,13 +67,13 @@ async def create_task(
         owner_id=db_task.owner_id,
         assigned_to=db_task.assigned_to,
         result=db_task.result,
-        metadata=db_task.metadata,
+        metadata=db_task.task_metadata,
         created_at=db_task.created_at,
         updated_at=db_task.updated_at,
         completed_at=db_task.completed_at
     )
 
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
+@router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -105,7 +105,7 @@ async def get_task(
         owner_id=task.owner_id,
         assigned_to=task.assigned_to,
         result=task.result,
-        metadata=task.metadata,
+        metadata=task.task_metadata,
         created_at=task.created_at,
         updated_at=task.updated_at,
         completed_at=task.completed_at
@@ -160,7 +160,7 @@ async def list_tasks(
                 owner_id=task.owner_id,
                 assigned_to=task.assigned_to,
                 result=task.result,
-                metadata=task.metadata,
+                metadata=task.task_metadata,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
                 completed_at=task.completed_at
@@ -220,7 +220,7 @@ async def update_task(
         owner_id=task.owner_id,
         assigned_to=task.assigned_to,
         result=task.result,
-        metadata=task.metadata,
+        metadata=task.task_metadata,
         created_at=task.created_at,
         updated_at=task.updated_at,
         completed_at=task.completed_at
