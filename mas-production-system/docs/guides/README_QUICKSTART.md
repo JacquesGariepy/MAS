@@ -29,7 +29,7 @@ L'application est maintenant prête avec :
 - ✅ API REST complète
 - ✅ Base de données PostgreSQL
 - ✅ Cache Redis
-- ✅ LLM Ollama (modèle llama2)
+- ✅ LLM Ollama (modèle qwen3:4b)
 - ✅ Documentation Swagger
 
 ## 📁 Structure simplifiée

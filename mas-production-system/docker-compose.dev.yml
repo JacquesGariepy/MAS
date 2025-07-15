@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8'  # Obsolete, removed to avoid warning
 
 # Docker Compose pour le développement
 # Usage: docker-compose -f docker-compose.dev.yml up
@@ -9,7 +9,7 @@ services:
       context: ./services/core
       dockerfile: Dockerfile.dev
     ports:
-      - "8000:8000"
+      - "8088:8000"  # Changed to 8088 to avoid conflicts
     environment:
       # Application
       - ENVIRONMENT=development
@@ -31,6 +31,7 @@ services:
     volumes:
       # Mount source code pour hot reload
       - ./services/core/src:/app/src
+      - ./services/core/alembic.ini:/app/alembic.ini
       - ./logs:/app/logs
     depends_on:
       db:
@@ -41,8 +42,7 @@ services:
       sh -c "
         echo 'Waiting for database...' &&
         sleep 5 &&
-        echo 'Running migrations...' &&
-        alembic upgrade head &&
+        echo 'Skipping migrations for now...' &&
         echo 'Starting application...' &&
         uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
       "
@@ -70,7 +70,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "6380:6379"  # Changed from 6379 to avoid conflict
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

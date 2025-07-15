@@ -16,7 +16,7 @@ from src.database.models import *
 
 # Sync engine for Alembic migrations
 sync_engine = create_engine(
-    settings.DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://"),
+    str(settings.DATABASE_URL).replace("postgresql://", "postgresql+psycopg2://"),
     echo=settings.DEBUG,
     pool_pre_ping=True,
     pool_size=10,
@@ -25,7 +25,7 @@ sync_engine = create_engine(
 
 # Async engine for application
 engine = create_async_engine(
-    settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
+    str(settings.DATABASE_URL).replace("postgresql://", "postgresql+asyncpg://"),
     echo=settings.DEBUG,
     pool_pre_ping=True,
     pool_size=10,

@@ -213,7 +213,7 @@ class Memory(Base):
     
     content = Column(Text, nullable=False)
     embedding = Column(ARRAY(Float))  # Vector embedding
-    metadata = Column(JSONB, default=dict)
+    memory_metadata = Column(JSONB, default=dict)  # Renamed from metadata
     
     memory_type = Column(String(20), default='semantic', nullable=False)
     importance = Column(Float, default=0.5, nullable=False)

@@ -28,7 +28,7 @@ class AgentService:
     def __init__(self):
         self.agent_factory = AgentFactory()
         self.runtime = AgentRuntime()
-        self.embedding_service = EmbeddingService()
+        # self.embedding_service = EmbeddingService()  # TODO: fix initialization
         
     async def create_agent(
         self,

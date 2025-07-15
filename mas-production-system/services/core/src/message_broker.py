@@ -19,8 +19,9 @@ subscribers = {}
 async def init_message_broker():
     """Initialize async Redis connection for message broker"""
     global broker, pubsub
+    redis_url = str(settings.REDIS_URL) if settings.REDIS_URL else "redis://redis:6379/1"
     broker = await aioredis.from_url(
-        settings.REDIS_URL or "redis://redis:6379/1",
+        redis_url,
         encoding="utf-8",
         decode_responses=True
     )

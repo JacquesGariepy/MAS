@@ -10,6 +10,7 @@ class AgentCreate(BaseModel):
     capabilities: Optional[List[str]] = []
     initial_beliefs: Optional[Dict] = {}
     initial_desires: Optional[List[str]] = []
+    reactive_rules: Optional[Dict] = {}
     configuration: Optional[Dict] = {}
     organization_id: Optional[UUID]
 

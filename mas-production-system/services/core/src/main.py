@@ -20,6 +20,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from src.config import settings
 from src.api import router as api_router
+from src.api.v1.endpoints.auth import router as auth_router
 from src.middleware import (
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
     
     # Include routers
+    app.include_router(auth_router)  # Auth at root level
     app.include_router(api_router, prefix="/api/v1")
     
     return app
@@ -109,7 +111,7 @@ async def startup_event():
     await init_message_broker()
     
     # Initialize monitoring
-    await init_monitoring()
+    init_monitoring()
     
     logger.info("All services initialized successfully")
 

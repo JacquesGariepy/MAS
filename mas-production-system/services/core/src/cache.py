@@ -13,8 +13,9 @@ cache = None
 async def init_cache():
     """Initialize async Redis connection"""
     global cache
+    redis_url = str(settings.REDIS_URL) if settings.REDIS_URL else "redis://redis:6379/0"
     cache = await aioredis.from_url(
-        settings.REDIS_URL or "redis://redis:6379/0",
+        redis_url,
         encoding="utf-8",
         decode_responses=True
     )

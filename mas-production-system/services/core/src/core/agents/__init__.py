@@ -27,6 +27,7 @@ class AgentFactory:
         name: str,
         role: str,
         capabilities: list,
+        llm_service: Any,  # Pass as parameter instead of getting it here
         **kwargs
     ) -> BaseAgent:
         """Create an agent of the specified type"""
@@ -34,10 +35,6 @@ class AgentFactory:
         agent_class = AGENT_TYPES.get(agent_type)
         if not agent_class:
             raise ValueError(f"Unknown agent type: {agent_type}")
-        
-        # Get required services
-        from src.services.llm_service import get_llm_service
-        llm_service = asyncio.run(get_llm_service())
         
         return agent_class(
             agent_id=agent_id,
@@ -60,6 +57,14 @@ class AgentRuntime:
     def __init__(self):
         self.running_agents: Dict[UUID, BaseAgent] = {}
         self.agent_tasks: Dict[UUID, asyncio.Task] = {}
+    
+    async def register_agent(self, agent: BaseAgent):
+        """Register an agent without starting it"""
+        if agent.agent_id in self.running_agents:
+            raise ValueError(f"Agent {agent.agent_id} is already registered")
+        
+        self.running_agents[agent.agent_id] = agent
+        logger.info(f"Registered agent {agent.name} ({agent.agent_id})")
     
     async def start_agent(self, agent: BaseAgent):
         """Start an agent"""

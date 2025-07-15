@@ -132,6 +132,29 @@ class ToolService:
     def __init__(self):
         self.registry = ToolRegistry()
         self.execution_history: Dict[UUID, List[Dict[str, Any]]] = {}
+        
+        # Capability to tools mapping
+        self.capability_tools = {
+            "conversation": ["web_search", "file_read"],
+            "analyse": ["file_read", "db_query"],
+            "conseil": ["web_search"],
+            "coding": ["git_clone", "git_commit", "compile_code", "run_tests", "file_write"],
+            "research": ["web_search", "file_read"],
+            "planning": ["file_read", "file_write"],
+            "communication": ["http_request"]
+        }
+    
+    def get_tools_for_capability(self, capability: str) -> Dict[str, Tool]:
+        """Get tools available for a given capability"""
+        tool_names = self.capability_tools.get(capability, [])
+        tools = {}
+        
+        for tool_name in tool_names:
+            tool = self.registry.get_tool(tool_name)
+            if tool:
+                tools[tool_name] = tool
+                
+        return tools
     
     async def execute_tool(
         self,

@@ -1,5 +1,5 @@
 """
-Agent API endpoints with async SQLAlchemy
+Agent API endpoints with full CRUD operations
 """
 
 from typing import List, Optional
@@ -7,9 +7,8 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, select, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
 
 from src.database import get_db
 from src.database.models import Agent, User, Organization
@@ -18,7 +17,8 @@ from src.schemas import agents as schemas
 from src.services.agent_service import AgentService
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
-from src.cache import delete as cache_delete, get as cache_get, set as cache_set
+from src.utils.pagination import paginate
+from src.cache import cache
 from src.message_broker import publish_event
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -28,18 +28,16 @@ logger = get_logger(__name__)
 async def create_agent(
     agent_data: schemas.AgentCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends(),
     llm_service: LLMService = Depends()
 ):
     """Create a new agent"""
     
     # Check user quota
-    stmt = select(func.count()).select_from(Agent).where(
+    agent_count = db.query(Agent).filter(
         and_(Agent.owner_id == current_user.id, Agent.is_active == True)
-    )
-    result = await db.execute(stmt)
-    agent_count = result.scalar()
+    ).count()
     
     if agent_count >= current_user.agent_quota:
         raise HTTPException(
@@ -49,15 +47,13 @@ async def create_agent(
     
     # Validate organization membership if specified
     if agent_data.organization_id:
-        stmt = select(Organization).where(
+        org = db.query(Organization).filter(
             and_(
                 Organization.id == agent_data.organization_id,
                 Organization.owner_id == current_user.id,
                 Organization.is_active == True
             )
-        )
-        result = await db.execute(stmt)
-        org = result.scalar_one_or_none()
+        ).first()
         
         if not org:
             raise HTTPException(
@@ -74,8 +70,8 @@ async def create_agent(
         )
         
         db.add(agent)
-        await db.commit()
-        await db.refresh(agent)
+        db.commit()
+        db.refresh(agent)
         
         # Publish event
         await publish_event("agent.created", {
@@ -85,22 +81,14 @@ async def create_agent(
         })
         
         # Clear cache
-        await cache_delete(f"user_agents:{current_user.id}")
+        await cache.delete(f"user_agents:{current_user.id}")
         
         logger.info(f"Agent {agent.id} created by user {current_user.id}")
         
-        return schemas.AgentResponse(
-            id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            agent_type=agent.agent_type,
-            status=agent.status,
-            capabilities=agent.capabilities if hasattr(agent, 'capabilities') else [],
-            created_at=agent.created_at
-        )
+        return schemas.AgentResponse.from_orm(agent)
         
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         logger.error(f"Failed to create agent: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -116,36 +104,35 @@ async def list_agents(
     organization_id: Optional[UUID] = None,
     search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """List user's agents with filtering and pagination"""
     
     # Try cache first
     cache_key = f"user_agents:{current_user.id}:{page}:{per_page}:{agent_type}:{status}"
-    cached = await cache_get(cache_key)
+    cached = await cache.get(cache_key)
     if cached:
-        import json
-        return json.loads(cached)
+        return cached
     
     # Build query
-    stmt = select(Agent).where(
+    query = db.query(Agent).filter(
         and_(Agent.owner_id == current_user.id, Agent.is_active == True)
     )
     
     # Apply filters
     if agent_type:
-        stmt = stmt.where(Agent.agent_type == agent_type)
+        query = query.filter(Agent.agent_type == agent_type)
     
     if status:
-        stmt = stmt.where(Agent.status == status)
+        query = query.filter(Agent.status == status)
     
     if organization_id:
-        stmt = stmt.join(Agent.organizations).where(
+        query = query.join(Agent.organizations).filter(
             Organization.id == organization_id
         )
     
     if search:
-        stmt = stmt.where(
+        query = query.filter(
             or_(
                 Agent.name.ilike(f"%{search}%"),
                 Agent.role.ilike(f"%{search}%")
@@ -153,61 +140,31 @@ async def list_agents(
         )
     
     # Order by last active
-    stmt = stmt.order_by(Agent.last_active_at.desc().nullsfirst(), Agent.created_at.desc())
-    
-    # Get total count
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar()
+    query = query.order_by(Agent.last_active_at.desc().nullsfirst(), Agent.created_at.desc())
     
     # Paginate
-    stmt = stmt.offset((page - 1) * per_page).limit(per_page)
-    result = await db.execute(stmt)
-    agents = result.scalars().all()
-    
-    # Build response
-    agent_list = schemas.AgentList(
-        items=[
-            schemas.AgentResponse(
-                id=agent.id,
-                name=agent.name,
-                role=agent.role,
-                agent_type=agent.agent_type,
-                status=agent.status,
-                capabilities=agent.capabilities if hasattr(agent, 'capabilities') else [],
-                created_at=agent.created_at
-            )
-            for agent in agents
-        ],
-        total=total,
-        page=page,
-        per_page=per_page,
-        pages=(total + per_page - 1) // per_page if per_page > 0 else 0
-    )
+    result = paginate(query, page, per_page, schemas.AgentResponse)
     
     # Cache result
-    import json
-    await cache_set(cache_key, json.dumps(agent_list.dict()), expire=300)  # 5 minutes
+    await cache.set(cache_key, result, expire=300)  # 5 minutes
     
-    return agent_list
+    return result
 
 @router.get("/{agent_id}", response_model=schemas.AgentDetail)
 async def get_agent(
     agent_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """Get agent details"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -217,40 +174,27 @@ async def get_agent(
     
     # Update last accessed
     agent.last_active_at = datetime.utcnow()
-    await db.commit()
+    db.commit()
     
-    return schemas.AgentDetail(
-        id=agent.id,
-        name=agent.name,
-        role=agent.role,
-        agent_type=agent.agent_type,
-        beliefs=agent.beliefs if hasattr(agent, 'beliefs') else {},
-        desires=agent.desires if hasattr(agent, 'desires') else [],
-        intentions=agent.intentions if hasattr(agent, 'intentions') else [],
-        metrics=agent.metrics if hasattr(agent, 'metrics') else {},
-        created_at=agent.created_at,
-        last_active_at=agent.last_active_at
-    )
+    return schemas.AgentDetail.from_orm(agent)
 
 @router.patch("/{agent_id}", response_model=schemas.AgentResponse)
 async def update_agent(
     agent_id: UUID,
     update_data: schemas.AgentUpdate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Update agent properties"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -262,30 +206,22 @@ async def update_agent(
         # Update agent
         updated_agent = await agent_service.update_agent(agent, update_data)
         
-        await db.commit()
-        await db.refresh(updated_agent)
+        db.commit()
+        db.refresh(updated_agent)
         
         # Publish event
         await publish_event("agent.updated", {
             "agent_id": str(agent.id),
-            "updated_fields": list(update_data.dict(exclude_unset=True).keys())
+            "updated_fields": update_data.dict(exclude_unset=True).keys()
         })
         
         # Clear cache
-        await cache_delete(f"user_agents:{current_user.id}")
+        await cache.delete(f"user_agents:{current_user.id}")
         
-        return schemas.AgentResponse(
-            id=updated_agent.id,
-            name=updated_agent.name,
-            role=updated_agent.role,
-            agent_type=updated_agent.agent_type,
-            status=updated_agent.status,
-            capabilities=updated_agent.capabilities if hasattr(updated_agent, 'capabilities') else [],
-            created_at=updated_agent.created_at
-        )
+        return schemas.AgentResponse.from_orm(updated_agent)
         
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         logger.error(f"Failed to update agent {agent_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -296,20 +232,18 @@ async def update_agent(
 async def delete_agent(
     agent_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Delete an agent (soft delete)"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -325,7 +259,7 @@ async def delete_agent(
         agent.is_active = False
         agent.status = 'deleted'
         
-        await db.commit()
+        db.commit()
         
         # Publish event
         await publish_event("agent.deleted", {
@@ -334,12 +268,12 @@ async def delete_agent(
         })
         
         # Clear cache
-        await cache_delete(f"user_agents:{current_user.id}")
+        await cache.delete(f"user_agents:{current_user.id}")
         
         logger.info(f"Agent {agent_id} deleted by user {current_user.id}")
         
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         logger.error(f"Failed to delete agent {agent_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -350,20 +284,18 @@ async def delete_agent(
 async def start_agent(
     agent_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Start an agent"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -384,22 +316,14 @@ async def start_agent(
         agent.status = 'working'
         agent.last_active_at = datetime.utcnow()
         
-        await db.commit()
+        db.commit()
         
         # Publish event
         await publish_event("agent.started", {
             "agent_id": str(agent.id)
         })
         
-        return schemas.AgentResponse(
-            id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            agent_type=agent.agent_type,
-            status=agent.status,
-            capabilities=agent.capabilities if hasattr(agent, 'capabilities') else [],
-            created_at=agent.created_at
-        )
+        return schemas.AgentResponse.from_orm(agent)
         
     except Exception as e:
         logger.error(f"Failed to start agent {agent_id}: {str(e)}")
@@ -412,20 +336,18 @@ async def start_agent(
 async def stop_agent(
     agent_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Stop a running agent"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -445,22 +367,14 @@ async def stop_agent(
         
         agent.status = 'idle'
         
-        await db.commit()
+        db.commit()
         
         # Publish event
         await publish_event("agent.stopped", {
             "agent_id": str(agent.id)
         })
         
-        return schemas.AgentResponse(
-            id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            agent_type=agent.agent_type,
-            status=agent.status,
-            capabilities=agent.capabilities if hasattr(agent, 'capabilities') else [],
-            created_at=agent.created_at
-        )
+        return schemas.AgentResponse.from_orm(agent)
         
     except Exception as e:
         logger.error(f"Failed to stop agent {agent_id}: {str(e)}")
@@ -476,20 +390,18 @@ async def get_agent_memories(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """Get agent's memories"""
     
     # Verify agent ownership
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -497,35 +409,34 @@ async def get_agent_memories(
             detail="Agent not found"
         )
     
-    # For now, return empty list
-    # In real implementation, would query Memory table
-    return schemas.MemoryList(
-        items=[],
-        total=0,
-        page=page,
-        per_page=per_page
-    )
+    # Query memories
+    query = agent.memories
+    
+    if memory_type:
+        query = query.filter(Memory.memory_type == memory_type)
+    
+    query = query.order_by(Memory.importance.desc(), Memory.created_at.desc())
+    
+    return paginate(query, page, per_page, schemas.MemoryResponse)
 
 @router.post("/{agent_id}/memories", response_model=schemas.MemoryResponse)
 async def add_agent_memory(
     agent_id: UUID,
     memory_data: schemas.MemoryCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Add memory to agent"""
     
     # Verify agent ownership
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(
@@ -538,21 +449,13 @@ async def add_agent_memory(
         memory = await agent_service.add_memory(agent, memory_data)
         
         db.add(memory)
-        await db.commit()
-        await db.refresh(memory)
+        db.commit()
+        db.refresh(memory)
         
-        return schemas.MemoryResponse(
-            id=memory.id,
-            content=memory.content,
-            memory_type=memory.memory_type,
-            importance=memory.importance,
-            metadata=memory.memory_metadata if hasattr(memory, 'memory_metadata') else {},
-            created_at=memory.created_at,
-            last_accessed_at=memory.last_accessed_at
-        )
+        return schemas.MemoryResponse.from_orm(memory)
         
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         logger.error(f"Failed to add memory: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -563,20 +466,18 @@ async def add_agent_memory(
 async def get_agent_metrics(
     agent_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     agent_service: AgentService = Depends()
 ):
     """Get agent performance metrics"""
     
-    stmt = select(Agent).where(
+    agent = db.query(Agent).filter(
         and_(
             Agent.id == agent_id,
             Agent.owner_id == current_user.id,
             Agent.is_active == True
         )
-    )
-    result = await db.execute(stmt)
-    agent = result.scalar_one_or_none()
+    ).first()
     
     if not agent:
         raise HTTPException(

@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8'  # Obsolete, removed to avoid warning
 
 # Docker Compose avec Ollama intégré
 # Usage: docker-compose -f docker-compose.ollama.yml up
@@ -22,10 +22,11 @@ services:
     #           capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Service MAS Core
   core:
@@ -33,12 +34,12 @@ services:
       context: ./services/core
       dockerfile: Dockerfile.dev
     ports:
-      - "8000:8000"
+      - "8088:8000"  # Changed to 8088 to avoid conflicts
     environment:
       # Configuration Ollama
       - LLM_PROVIDER=ollama
       - LLM_BASE_URL=http://ollama:11434
-      - LLM_MODEL=${OLLAMA_MODEL:-llama2}  # Modifiable via .env
+      - LLM_MODEL=${OLLAMA_MODEL:-qwen3:4b}  # Modifiable via .env
       - LLM_API_KEY=not-needed
       
       # Reste de la configuration
@@ -50,7 +51,6 @@ services:
       
     volumes:
       - ./services/core/src:/app/src
-      - ./services/core/alembic:/app/alembic
       - ./services/core/alembic.ini:/app/alembic.ini
       - ./logs:/app/logs
     depends_on:
@@ -64,8 +64,7 @@ services:
       sh -c "
         echo 'Waiting for services...' &&
         sleep 5 &&
-        echo 'Running migrations...' &&
-        alembic upgrade head &&
+        echo 'Skipping migrations for now...' &&
         echo 'Starting application...' &&
         uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
       "
@@ -94,7 +93,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "6380:6379"  # Changed from 6379 to avoid conflict
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -113,8 +112,8 @@ services:
       sh -c "
         echo 'Waiting for Ollama to be ready...' &&
         sleep 10 &&
-        echo 'Pulling ${OLLAMA_MODEL:-llama2} model...' &&
-        ollama pull ${OLLAMA_MODEL:-llama2} &&
+        echo 'Pulling ${OLLAMA_MODEL:-qwen3:4b} model...' &&
+        ollama pull ${OLLAMA_MODEL:-qwen3:4b} &&
         echo 'Model ready!' &&
         exit 0
       "

@@ -44,7 +44,8 @@ class BaseAgent(ABC):
         llm_service: Optional[LLMService] = None,
         **kwargs
     ):
-        self.id = agent_id
+        self.agent_id = agent_id  # Add agent_id attribute
+        self.id = agent_id  # Keep for compatibility
         self.name = name
         self.role = role
         self.capabilities = capabilities

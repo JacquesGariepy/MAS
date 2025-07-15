@@ -5,12 +5,9 @@ Configuration management with environment validation
 from typing import List, Optional, Dict, Any
 from functools import lru_cache
 
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:
-    # Fallback for older Pydantic versions
-    from pydantic import BaseSettings, validator, PostgresDsn, RedisDsn, HttpUrl
-from pydantic.networks import AnyHttpUrl
+from pydantic_settings import BaseSettings
+from pydantic import validator, field_validator
+from pydantic.networks import PostgresDsn, RedisDsn, HttpUrl, AnyHttpUrl
 
 class Settings(BaseSettings):
     """Application settings with validation"""
@@ -30,7 +27,7 @@ class Settings(BaseSettings):
     ENABLE_DOCS: bool = True
     
     # Security
-    SECRET_KEY: str
+    SECRET_KEY: str = "dev-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
@@ -50,8 +47,8 @@ class Settings(BaseSettings):
     REDIS_POOL_SIZE: int = 10
     REDIS_DECODE_RESPONSES: bool = True
     
-    # Message Broker
-    RABBITMQ_URL: str
+    # Message Broker (Optional - we use Redis for now)
+    RABBITMQ_URL: Optional[str] = None
     RABBITMQ_EXCHANGE: str = "mas_events"
     RABBITMQ_QUEUE_TTL: int = 3600000  # 1 hour
     
@@ -69,6 +66,9 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-sonnet"
     ANTHROPIC_MAX_TOKENS: int = 4000
     
+    LLM_PROVIDER: str = "openai"  # openai, ollama, lmstudio
+    LLM_BASE_URL: Optional[str] = None  # For Ollama/LM Studio
+    LLM_API_KEY: Optional[str] = None
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 4000
@@ -111,21 +111,24 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM: str = "noreply@mas-system.com"
     
-    @validator("CORS_ORIGINS", pre=True)
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
     
-    @validator("DATABASE_URL", pre=True)
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
     def validate_database_url(cls, v):
         if not v:
             raise ValueError("DATABASE_URL is required")
         return v
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True
+    }
 
 @lru_cache()
 def get_settings() -> Settings:

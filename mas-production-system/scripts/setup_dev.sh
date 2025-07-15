@@ -196,7 +196,7 @@ EOF
         2)
             print_info "Configuring Ollama (local)"
             echo -e "\nAvailable Ollama models:"
-            echo "1) llama2 (7B, lightweight)"
+            echo "1) qwen3:4b (7B, lightweight)"
             echo "2) mistral (7B, performant)"
             echo "3) codellama (7B, code-specialized)"
             echo "4) mixtral (8x7B, very performant but heavy)"
@@ -206,7 +206,7 @@ EOF
             model_choice=${model_choice:-2}
             
             case $model_choice in
-                1) model="llama2";;
+                1) model="qwen3:4b";;
                 2) model="mistral";;
                 3) model="codellama";;
                 4) model="mixtral";;

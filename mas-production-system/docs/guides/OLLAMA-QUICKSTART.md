@@ -8,7 +8,7 @@
 # 1. Lancer tout le stack avec Ollama inclus
 docker-compose -f docker-compose.ollama.yml up -d
 
-# 2. Le modèle llama2 sera téléchargé automatiquement
+# 2. Le modèle qwen3:4b sera téléchargé automatiquement
 # Vérifier les logs
 docker-compose -f docker-compose.ollama.yml logs -f ollama-setup
 
@@ -22,7 +22,7 @@ docker-compose -f docker-compose.ollama.yml logs -f ollama-setup
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # 2. Télécharger un modèle
-ollama pull llama2
+ollama pull qwen3:4b
 # ou d'autres modèles : mistral, mixtral, codellama, etc.
 
 # 3. Lancer Ollama (il démarre automatiquement après l'installation)
@@ -32,7 +32,7 @@ curl http://localhost:11434/api/tags
 # 4. Configurer .env
 echo "LLM_PROVIDER=ollama" > .env
 echo "LLM_BASE_URL=http://host.docker.internal:11434" >> .env
-echo "LLM_MODEL=llama2" >> .env
+echo "LLM_MODEL=qwen3:4b" >> .env
 
 # 5. Lancer les services (sans Ollama dans Docker)
 docker-compose -f docker-compose.dev.yml up -d
@@ -74,7 +74,7 @@ docker-compose -f docker-compose.ollama.yml up -d
 
 | Modèle | Taille | Usage | Commande |
 |--------|---------|--------|----------|
-| `llama2` | 3.8GB | Général | `ollama pull llama2` |
+| `qwen3:4b` | 3.8GB | Général | `ollama pull qwen3:4b` |
 | `mistral` | 4.1GB | Rapide & bon | `ollama pull mistral` |
 | `mixtral` | 26GB | Très puissant | `ollama pull mixtral` |
 | `codellama` | 3.8GB | Code | `ollama pull codellama` |
@@ -101,10 +101,10 @@ docker exec ollama ollama list
 docker exec ollama ollama pull mistral
 
 # Supprimer un modèle
-docker exec ollama ollama rm llama2
+docker exec ollama ollama rm qwen3:4b
 
 # Tester un modèle directement
-docker exec -it ollama ollama run llama2 "Hello, how are you?"
+docker exec -it ollama ollama run qwen3:4b "Hello, how are you?"
 ```
 
 ### Monitoring
@@ -127,7 +127,7 @@ curl http://localhost:8000/health
 Le système est pré-configuré pour Ollama. L'agent va utiliser :
 - Provider : `ollama`
 - URL : `http://ollama:11434` (communication inter-containers)
-- Modèle : `llama2` (ou celui configuré dans OLLAMA_MODEL)
+- Modèle : `qwen3:4b` (ou celui configuré dans OLLAMA_MODEL)
 
 ### Exemple d'appel API
 ```bash
@@ -144,9 +144,9 @@ curl -X POST http://localhost:8000/api/v1/agents \
 ## 📈 Performance
 
 ### Recommandations
-- **CPU only** : Modèles < 7B paramètres (phi, llama2-7b)
-- **GPU 8GB** : Modèles jusqu'à 13B (llama2-13b, mistral)
-- **GPU 16GB+** : Grands modèles (mixtral, llama2-70b quantizé)
+- **CPU only** : Modèles < 7B paramètres (phi, qwen3:4b-7b)
+- **GPU 8GB** : Modèles jusqu'à 13B (qwen3:4b-13b, mistral)
+- **GPU 16GB+** : Grands modèles (mixtral, qwen3:4b-70b quantizé)
 
 ### Optimisation mémoire
 ```bash
@@ -168,7 +168,7 @@ docker-compose -f docker-compose.ollama.yml restart ollama
 ### "Model not found"
 ```bash
 # Télécharger le modèle
-docker exec ollama ollama pull llama2
+docker exec ollama ollama pull qwen3:4b
 ```
 
 ### Lenteur

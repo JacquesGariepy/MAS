@@ -53,7 +53,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 **Étape 2 : Télécharger un modèle**
 ```bash
-ollama pull llama2
+ollama pull qwen3:4b
 # ou
 ollama pull mistral
 ```
@@ -64,7 +64,7 @@ ollama pull mistral
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://host.docker.internal:11434
 LLM_API_KEY=not-needed
-LLM_MODEL=llama2
+LLM_MODEL=qwen3:4b
 ```
 
 ### 3️⃣ Ollama (Option B : Dans Docker) 🐳
@@ -96,7 +96,7 @@ services:
     environment:
       - LLM_PROVIDER=ollama
       - LLM_BASE_URL=http://ollama:11434  # Nom du service Docker
-      - LLM_MODEL=llama2
+      - LLM_MODEL=qwen3:4b
     depends_on:
       - ollama
       - db
@@ -109,7 +109,7 @@ volumes:
 **Télécharger un modèle dans Ollama Docker :**
 ```bash
 # Après docker-compose up
-docker-compose exec ollama ollama pull llama2
+docker-compose exec ollama ollama pull qwen3:4b
 ```
 
 ## 🔧 Docker Compose Complet avec Options
@@ -139,7 +139,7 @@ services:
       # Option 3 : Ollama (dans Docker)
       # - LLM_PROVIDER=ollama
       # - LLM_BASE_URL=http://ollama:11434
-      # - LLM_MODEL=llama2
+      # - LLM_MODEL=qwen3:4b
       
       # Reste de la config
       - DATABASE_URL=postgresql://user:pass@db:5432/mas
@@ -255,7 +255,7 @@ LLM_MODEL=mistral
 LLM_PROVIDER=ollama
 LLM_BASE_URL=http://ollama:11434
 LLM_API_KEY=not-needed
-LLM_MODEL=llama2
+LLM_MODEL=qwen3:4b
 ```
 
 ---
