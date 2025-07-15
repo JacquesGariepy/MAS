@@ -1,0 +1,126 @@
+version: '3.8'
+
+# Docker Compose avec Ollama intégré
+# Usage: docker-compose -f docker-compose.ollama.yml up
+
+services:
+  # Service Ollama
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Pour GPU NVIDIA (décommenter si disponible)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Service MAS Core
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      # Configuration Ollama
+      - LLM_PROVIDER=ollama
+      - LLM_BASE_URL=http://ollama:11434
+      - LLM_MODEL=${OLLAMA_MODEL:-llama2}  # Modifiable via .env
+      - LLM_API_KEY=not-needed
+      
+      # Reste de la configuration
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key
+      - DATABASE_URL=postgresql://user:pass@db:5432/mas
+      - REDIS_URL=redis://redis:6379/0
+      
+    volumes:
+      - ./services/core/src:/app/src
+      - ./services/core/alembic:/app/alembic
+      - ./services/core/alembic.ini:/app/alembic.ini
+      - ./logs:/app/logs
+    depends_on:
+      ollama:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for services...' &&
+        sleep 5 &&
+        echo 'Running migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting application...' &&
+        uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # PostgreSQL
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mas
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Service pour initialiser Ollama avec un modèle
+  ollama-setup:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: >
+      sh -c "
+        echo 'Waiting for Ollama to be ready...' &&
+        sleep 10 &&
+        echo 'Pulling ${OLLAMA_MODEL:-llama2} model...' &&
+        ollama pull ${OLLAMA_MODEL:-llama2} &&
+        echo 'Model ready!' &&
+        exit 0
+      "
+    restart: "no"  # Run once only
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:

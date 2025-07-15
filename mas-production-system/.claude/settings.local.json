@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-flow__swarm_init",
+      "mcp__claude-flow__agent_spawn",
+      "mcp__claude-flow__memory_usage",
+      "Bash(chmod:*)",
+      "mcp__claude-flow__swarm_destroy",
+      "Bash(mv:*)"
+    ],
+    "deny": []
+  }
+}

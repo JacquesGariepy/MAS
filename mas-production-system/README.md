@@ -102,10 +102,15 @@ make deploy-prod
 
 ## 📚 Documentation
 
-- [API Documentation](./docs/api/README.md)
-- [Architecture Guide](./docs/architecture/README.md)
-- [Developer Guide](./docs/developer/README.md)
-- [Operations Manual](./docs/operations/README.md)
+Toute la documentation est organisée dans le répertoire [`/docs`](./docs/):
+
+- 🚀 **[Quick Start Guide](./docs/guides/README_QUICKSTART.md)** - Démarrer en 3 minutes avec Docker
+- 📖 **[Documentation Index](./docs/README.md)** - Index complet de la documentation
+- 🔧 **[Development Guide](./docs/guides/DEVELOPMENT.md)** - Guide pour les développeurs
+- ⚙️ **[Configuration Guide](./docs/guides/CONFIG-GUIDE.md)** - Configuration détaillée
+- 🤖 **[LLM Setup Guide](./docs/guides/LLM-SETUP.md)** - Configurer OpenAI, Ollama ou LM Studio
+- 📋 **[API Specification](./docs/api/openapi.yaml)** - Spécification OpenAPI complète
+- 🐳 **[Docker Guide](./docs/guides/DOCKER-QUICKSTART.md)** - Utilisation avec Docker
 
 ## 🔧 Configuration
 

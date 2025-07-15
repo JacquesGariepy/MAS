@@ -99,7 +99,7 @@ REDIS_URL=redis://localhost:6379/0
 # LLM (choisir un provider)
 LLM_PROVIDER=openai
 LLM_API_KEY=your-api-key
-LLM_MODEL=gpt-4-turbo-preview
+LLM_MODEL=gpt-4o-mini
 
 # Ou pour LM Studio (local)
 LLM_PROVIDER=lmstudio

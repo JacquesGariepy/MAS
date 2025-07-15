@@ -1,16 +1,73 @@
-app:
-  name: mas-system
-  environment: production
+# Configuration par défaut (non-sensible)
+# Les variables d'environnement ont priorité sur ces valeurs
 
+app:
+  name: Multi-Agent System
+  version: 2.0.0
+  environment: production
+  debug: false
+
+# Configuration LLM par défaut
 llm:
-  provider: lmstudio
-  base_url: http://localhost:1234/v1
-  model: gpt-4-turbo-preview
+  provider: openai
+  model: gpt-4o-mini
   temperature: 0.7
   max_tokens: 4000
+  timeout: 60
 
-database:
-  url: postgresql://user:pass@host:5432/db
+# Paramètres des agents
+agents:
+  max_per_user: 10
+  default_memory_size_mb: 512
+  task_timeout_minutes: 60
+  
+  # Types d'agents disponibles
+  types:
+    - cognitive
+    - reflexive
+    - hybrid
+  
+  # Capacités par défaut
+  default_capabilities:
+    - analyze
+    - generate
+    - communicate
 
-redis:
-  url: redis://host:6379
+# Configuration de performance  
+performance:
+  worker_count: 4
+  thread_pool_size: 10
+  connection_pool_size: 20
+  cache_ttl_seconds: 3600
+
+# Sécurité
+security:
+  rate_limit_enabled: true
+  rate_limit_calls: 100
+  rate_limit_period: 60
+  cors_enabled: true
+  allowed_hosts:
+    - localhost
+    - 127.0.0.1
+  
+# Monitoring
+monitoring:
+  prometheus_enabled: true
+  metrics_port: 9090
+  health_check_interval: 30
+
+# Features flags
+features:
+  enable_agent_swarms: true
+  enable_cognitive_agents: true
+  enable_code_tools: true
+  enable_web_search: true
+  enable_embeddings: true
+
+# Logging
+logging:
+  level: INFO
+  format: json
+  file_rotation: true
+  max_file_size_mb: 100
+  backup_count: 5
