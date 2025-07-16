@@ -1,13 +1,3 @@
-/.claude
-/.out-of-code-insights
-/.swarm
-/claude-flow
-/claude-flow.bat
-/claude-flow.ps1
-/CLAUDE.md
-/coordination
-mas-production-system/.env
-mas-production-system/venv/
 
 # Claude Flow generated files
 .claude/settings.local.json

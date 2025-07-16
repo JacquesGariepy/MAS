@@ -1,0 +1,4 @@
+# Requirements for running example scripts locally
+httpx==0.25.2
+asyncio
+pydantic==2.5.3

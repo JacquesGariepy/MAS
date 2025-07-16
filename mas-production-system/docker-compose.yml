@@ -1,7 +1,9 @@
 version: '3.8'
 services:
   core:
-    build: ./services/core
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile.dev
     ports:
       - "8000:8000"
     environment:
@@ -17,6 +19,7 @@ services:
       - ./services/core/src:/app/src  # Hot reload en dev
       - ./services/core/alembic:/app/alembic
       - ./logs:/app/logs
+      - ./examples:/app/examples  # Scripts de test et démo
     depends_on:
       db:
         condition: service_healthy

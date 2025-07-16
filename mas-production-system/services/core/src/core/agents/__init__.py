@@ -7,14 +7,18 @@ import asyncio
 
 from src.core.agents.base_agent import BaseAgent
 from src.core.agents.cognitive_agent import CognitiveAgent
+from src.core.agents.reflexive_agent import ReflexiveAgent
+from src.core.agents.hybrid_agent import HybridAgent
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # Agent type registry
 AGENT_TYPES: Dict[str, Type[BaseAgent]] = {
-    "cognitive": CognitiveAgent,
-    # TODO: Add ReflexiveAgent and HybridAgent when implemented
+    "cognitive": CognitiveAgent,  # Cognitive agents use LLM for complex reasoning
+    "reactive": CognitiveAgent,   # Reactive is an alias for cognitive (for backward compatibility)
+    "reflexive": ReflexiveAgent,  # Reflexive agents use rule-based processing
+    "hybrid": HybridAgent         # Hybrid agents combine both approaches
 }
 
 class AgentFactory:
@@ -30,20 +34,67 @@ class AgentFactory:
         llm_service: Any,  # Pass as parameter instead of getting it here
         **kwargs
     ) -> BaseAgent:
-        """Create an agent of the specified type"""
+        """Create an agent of the specified type
+        
+        Args:
+            agent_type: Type of agent ("reactive", "reflexive", or "hybrid")
+            agent_id: Unique identifier for the agent
+            name: Agent name
+            role: Agent role/purpose
+            capabilities: List of agent capabilities
+            llm_service: LLM service for cognitive processing
+            **kwargs: Additional parameters:
+                - reactive_rules: Dict of rules for reflexive agents
+                - cognitive_threshold: Float threshold for hybrid agents
+                - beliefs: Initial beliefs
+                - desires: Initial desires
+                - intentions: Initial intentions
+        
+        Returns:
+            BaseAgent instance of the specified type
+        """
+        
+        logger.info(f"Creating {agent_type} agent: {name} (ID: {agent_id})")
+        logger.debug(f"Agent parameters: role={role}, capabilities={capabilities}, kwargs={kwargs.keys()}")
         
         agent_class = AGENT_TYPES.get(agent_type)
         if not agent_class:
-            raise ValueError(f"Unknown agent type: {agent_type}")
+            logger.error(f"Unknown agent type: {agent_type}. Available types: {list(AGENT_TYPES.keys())}")
+            raise ValueError(f"Unknown agent type: {agent_type}. Available types: {list(AGENT_TYPES.keys())}")
         
-        return agent_class(
-            agent_id=agent_id,
-            name=name,
-            role=role,
-            capabilities=capabilities,
-            llm_service=llm_service,
-            **kwargs
-        )
+        try:
+            # Extract type-specific parameters
+            if agent_type == "reflexive":
+                # Reflexive agents need reactive_rules
+                reactive_rules = kwargs.get("reactive_rules", {})
+                logger.debug(f"Creating reflexive agent with {len(reactive_rules)} rules")
+                
+            elif agent_type == "hybrid":
+                # Hybrid agents need both reactive_rules and cognitive_threshold
+                reactive_rules = kwargs.get("reactive_rules", {})
+                cognitive_threshold = kwargs.get("cognitive_threshold", 0.7)
+                logger.debug(f"Creating hybrid agent with {len(reactive_rules)} rules and threshold {cognitive_threshold}")
+                
+            elif agent_type == "reactive":
+                # Reactive (cognitive) agents primarily use the LLM
+                logger.debug(f"Creating reactive agent with LLM service: {llm_service is not None}")
+            
+            # Create the agent
+            agent = agent_class(
+                agent_id=agent_id,
+                name=name,
+                role=role,
+                capabilities=capabilities,
+                llm_service=llm_service,
+                **kwargs
+            )
+            
+            logger.info(f"Successfully created {agent_type} agent: {name}")
+            return agent
+            
+        except Exception as e:
+            logger.error(f"Failed to create {agent_type} agent {name}: {str(e)}", exc_info=True)
+            raise
     
     @staticmethod
     def register_agent_type(name: str, agent_class: Type[BaseAgent]):
@@ -68,10 +119,11 @@ class AgentRuntime:
     
     async def start_agent(self, agent: BaseAgent):
         """Start an agent"""
-        if agent.agent_id in self.running_agents:
-            raise ValueError(f"Agent {agent.agent_id} is already running")
+        # Agent should already be registered, just verify it exists
+        if agent.agent_id not in self.running_agents:
+            raise ValueError(f"Agent {agent.agent_id} is not registered")
         
-        self.running_agents[agent.agent_id] = agent
+        # Don't add again, it's already in running_agents from register_agent
         
         # Create and start agent task
         task = asyncio.create_task(agent.run())
@@ -138,6 +190,8 @@ def get_agent_runtime() -> AgentRuntime:
 __all__ = [
     "BaseAgent",
     "CognitiveAgent",
+    "ReflexiveAgent",
+    "HybridAgent",
     "AgentFactory",
     "AgentRuntime",
     "get_agent_runtime",

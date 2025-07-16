@@ -7,7 +7,7 @@ import requests
 import time
 
 # Configuration
-API_URL = "http://localhost:8088"
+API_URL = "http://localhost:8000"
 
 def main():
     print("🤖 Exemple Simple MAS - Création d'Agent et Requête\n")
@@ -86,7 +86,7 @@ def main():
     
     # 5. Envoyer une requête (via une tâche)
     print("\n5️⃣ Envoi d'une question à l'agent...")
-    question = "Qu'est-ce qu'un système multi-agents et quels sont ses avantages ?"
+    question = "Yo ! Qu'est-ce qu'un système multi-agents et quels sont ses avantages ?"
     
     task_data = {
         "title": "Question utilisateur",

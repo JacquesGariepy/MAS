@@ -33,6 +33,7 @@ services:
       - ./services/core/src:/app/src
       - ./services/core/alembic.ini:/app/alembic.ini
       - ./logs:/app/logs
+      - ./examples:/app/examples  # Scripts de test et démo
     depends_on:
       db:
         condition: service_healthy

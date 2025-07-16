@@ -334,7 +334,7 @@ def main():
     
     try:
         # Check if API is available
-        response = requests.get(f"{API_BASE_URL}/health")
+        response = requests.get(f"{API_BASE_URL}/docs")
         if response.status_code != 200:
             print("Error: MAS API is not running on http://localhost:8000")
             print("Please start the MAS system first")

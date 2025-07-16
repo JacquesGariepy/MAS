@@ -52,16 +52,22 @@ class AgentService:
             configuration=agent_data.configuration or {}
         )
         
-        # Create runtime instance
-        runtime_agent = self.agent_factory.create_agent(
-            agent_type=agent_data.agent_type,
-            agent_id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            capabilities=agent.capabilities,
-            llm_service=llm_service,
-            **agent_data.configuration
-        )
+        # Create runtime instance with all necessary parameters
+        factory_params = {
+            "agent_type": agent_data.agent_type,
+            "agent_id": agent.id,
+            "name": agent.name,
+            "role": agent.role,
+            "capabilities": agent.capabilities,
+            "llm_service": llm_service,
+            "reactive_rules": agent_data.reactive_rules or {}
+        }
+        
+        # Add configuration parameters
+        if agent_data.configuration:
+            factory_params.update(agent_data.configuration)
+        
+        runtime_agent = self.agent_factory.create_agent(**factory_params)
         
         # Register with runtime
         await self.runtime.register_agent(runtime_agent)
@@ -88,7 +94,7 @@ class AgentService:
         
         # Update runtime instance if running
         if agent.status != 'idle':
-            runtime_agent = await self.runtime.get_agent(agent.id)
+            runtime_agent = self.runtime.get_running_agent(agent.id)
             if runtime_agent:
                 await runtime_agent.update_configuration(update_dict)
         
@@ -105,7 +111,7 @@ class AgentService:
             return
         
         # Create runtime instance if not exists
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if not runtime_agent:
             llm_service = LLMService()  # Get appropriate LLM service
             runtime_agent = self.agent_factory.create_agent(
@@ -120,7 +126,7 @@ class AgentService:
             await self.runtime.register_agent(runtime_agent)
         
         # Start agent
-        await self.runtime.start_agent(agent.id)
+        await self.runtime.start_agent(runtime_agent)
         
         logger.info(f"Started agent {agent.id}")
         
@@ -142,8 +148,9 @@ class AgentService:
     ) -> Memory:
         """Add memory to agent"""
         
-        # Generate embedding
-        embedding = await self.embedding_service.create_embedding(memory_data.content)
+        # Generate embedding (TODO: uncomment when EmbeddingService is fixed)
+        # embedding = await self.embedding_service.create_embedding(memory_data.content)
+        embedding = None  # Temporary
         
         # Create memory
         memory = Memory(
@@ -156,7 +163,7 @@ class AgentService:
         )
         
         # Update agent's memory in runtime
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if runtime_agent:
             await runtime_agent.add_memory(memory)
         
@@ -212,7 +219,7 @@ class AgentService:
         }
         
         # Get runtime metrics if available
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if runtime_agent:
             runtime_metrics = await runtime_agent.get_metrics()
             metrics.update(runtime_metrics)
@@ -230,7 +237,7 @@ class AgentService:
     ) -> Dict[str, Any]:
         """Execute an agent action"""
         
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if not runtime_agent:
             raise ValueError(f"Agent {agent.id} is not running")
         
@@ -263,7 +270,7 @@ class AgentService:
     ) -> Optional[Message]:
         """Handle incoming message for agent"""
         
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if not runtime_agent:
             logger.warning(f"Agent {agent.id} is not running, queueing message")
             # Queue message for later processing
@@ -290,7 +297,7 @@ class AgentService:
     ):
         """Assign task to agent"""
         
-        runtime_agent = await self.runtime.get_agent(agent.id)
+        runtime_agent = self.runtime.get_running_agent(agent.id)
         if not runtime_agent:
             raise ValueError(f"Agent {agent.id} is not running")
         

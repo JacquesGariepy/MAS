@@ -2,8 +2,8 @@
 Agent API endpoints with async SQLAlchemy
 """
 
-from typing import List, Optional
-from uuid import UUID
+from typing import List, Optional, Dict, Any
+from uuid import UUID, uuid4
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, status
@@ -12,9 +12,10 @@ from sqlalchemy import and_, or_, select, func
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db
-from src.database.models import Agent, User, Organization
+from src.database.models import Agent, User, Organization, Message
 from src.api.dependencies import get_current_user
 from src.schemas import agents as schemas
+from src.schemas import messages as message_schemas
 from src.services.agent_service import AgentService
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
@@ -66,6 +67,10 @@ async def create_agent(
             )
     
     try:
+        # Map reactive to cognitive for database compatibility
+        if agent_data.agent_type == "reactive":
+            agent_data.agent_type = "cognitive"
+        
         # Create agent
         agent = await agent_service.create_agent(
             owner_id=current_user.id,
@@ -565,6 +570,322 @@ async def add_agent_memory(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add memory"
+        )
+
+@router.post("/{agent_id}/messages", response_model=message_schemas.MessageResponse, status_code=status.HTTP_201_CREATED)
+async def send_message(
+    agent_id: UUID,
+    message_data: message_schemas.MessageCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Send a message from an agent to another agent.
+    
+    The endpoint:
+    1. Verifies that the sender agent belongs to the current user
+    2. Verifies that the receiver agent exists
+    3. Creates a message with FIPA-ACL performative
+    4. Saves it to the database
+    5. Returns the created message
+    
+    Args:
+        agent_id: ID of the sending agent (from URL)
+        message_data: Message creation data including receiver_id, performative, and content
+        current_user: Current authenticated user
+        db: Database session
+    
+    Returns:
+        The created message with all fields
+        
+    Raises:
+        404: If sender or receiver agent not found
+        403: If sender agent doesn't belong to current user
+        400: If invalid performative or other validation error
+    """
+    
+    # Step 1: Verify that the sender agent belongs to the current user
+    stmt = select(Agent).where(
+        and_(
+            Agent.id == agent_id,
+            Agent.owner_id == current_user.id,
+            Agent.is_active == True
+        )
+    )
+    result = await db.execute(stmt)
+    sender = result.scalar_one_or_none()
+    
+    if not sender:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sender agent not found or you don't have permission to send messages from this agent"
+        )
+    
+    # Step 2: Verify that the receiver agent exists
+    stmt = select(Agent).where(
+        and_(
+            Agent.id == message_data.receiver_id,
+            Agent.is_active == True
+        )
+    )
+    result = await db.execute(stmt)
+    receiver = result.scalar_one_or_none()
+    
+    if not receiver:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Receiver agent not found"
+        )
+    
+    # Prevent sending messages to self
+    if agent_id == message_data.receiver_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Agent cannot send messages to itself"
+        )
+    
+    try:
+        # Step 3 & 4: Create message with FIPA-ACL performative and save to database
+        message = Message(
+            sender_id=agent_id,
+            receiver_id=message_data.receiver_id,
+            performative=message_data.performative,
+            content=message_data.content,
+            protocol='fipa-acl',
+            conversation_id=message_data.conversation_id or uuid4(),
+            in_reply_to=message_data.in_reply_to,
+            is_read=False
+        )
+        
+        db.add(message)
+        
+        # Update sender metrics
+        if hasattr(sender, 'total_messages'):
+            sender.total_messages = (sender.total_messages or 0) + 1
+        sender.last_active_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(message)
+        
+        # Publish event for real-time notifications
+        await publish_event("message.sent", {
+            "message_id": str(message.id),
+            "sender_id": str(agent_id),
+            "receiver_id": str(message_data.receiver_id),
+            "performative": message.performative,
+            "conversation_id": str(message.conversation_id)
+        })
+        
+        # Clear receiver's cache to ensure they see new messages
+        await cache_delete(f"agent_messages:{message_data.receiver_id}")
+        
+        logger.info(f"Message {message.id} sent from agent {agent_id} to {message_data.receiver_id} with performative '{message.performative}'")
+        
+        # Step 5: Return the created message
+        return message_schemas.MessageResponse(
+            id=message.id,
+            sender_id=message.sender_id,
+            receiver_id=message.receiver_id,
+            performative=message.performative,
+            content=message.content,
+            protocol=message.protocol,
+            conversation_id=message.conversation_id,
+            in_reply_to=message.in_reply_to,
+            is_read=message.is_read,
+            created_at=message.created_at
+        )
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to send message from agent {agent_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send message: {str(e)}"
+        )
+
+@router.get("/{agent_id}/messages", response_model=message_schemas.MessageList)
+async def get_agent_messages(
+    agent_id: UUID,
+    message_type: str = Query("received", regex="^(sent|received|all)$", description="Filter by message type"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    conversation_id: Optional[UUID] = Query(None, description="Filter by conversation ID"),
+    performative: Optional[str] = Query(None, description="Filter by performative"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get messages for an agent (sent, received, or all).
+    
+    Args:
+        agent_id: ID of the agent
+        message_type: Filter by sent, received, or all messages
+        page: Page number for pagination
+        per_page: Number of items per page
+        conversation_id: Optional filter by conversation
+        performative: Optional filter by performative type
+        
+    Returns:
+        Paginated list of messages
+    """
+    
+    # Verify agent ownership
+    stmt = select(Agent).where(
+        and_(
+            Agent.id == agent_id,
+            Agent.owner_id == current_user.id,
+            Agent.is_active == True
+        )
+    )
+    result = await db.execute(stmt)
+    agent = result.scalar_one_or_none()
+    
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found or you don't have permission to view its messages"
+        )
+    
+    # Build base query
+    stmt = select(Message)
+    
+    # Apply message type filter
+    if message_type == "sent":
+        stmt = stmt.where(Message.sender_id == agent_id)
+    elif message_type == "received":
+        stmt = stmt.where(Message.receiver_id == agent_id)
+    else:  # all
+        stmt = stmt.where(or_(Message.sender_id == agent_id, Message.receiver_id == agent_id))
+    
+    # Apply additional filters
+    if conversation_id:
+        stmt = stmt.where(Message.conversation_id == conversation_id)
+    
+    if performative:
+        stmt = stmt.where(Message.performative == performative)
+    
+    # Order by creation date (newest first)
+    stmt = stmt.order_by(Message.created_at.desc())
+    
+    # Get total count
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar()
+    
+    # Paginate
+    stmt = stmt.offset((page - 1) * per_page).limit(per_page)
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+    
+    # Build response
+    return message_schemas.MessageList(
+        items=[
+            message_schemas.MessageResponse(
+                id=msg.id,
+                sender_id=msg.sender_id,
+                receiver_id=msg.receiver_id,
+                performative=msg.performative,
+                content=msg.content,
+                protocol=msg.protocol,
+                conversation_id=msg.conversation_id,
+                in_reply_to=msg.in_reply_to,
+                is_read=msg.is_read,
+                created_at=msg.created_at
+            )
+            for msg in messages
+        ],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=(total + per_page - 1) // per_page if per_page > 0 else 0
+    )
+
+@router.patch("/{agent_id}/messages/{message_id}/read", response_model=message_schemas.MessageResponse)
+async def mark_message_as_read(
+    agent_id: UUID,
+    message_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Mark a message as read. Only the receiver agent can mark a message as read.
+    
+    Args:
+        agent_id: ID of the agent (must be the receiver)
+        message_id: ID of the message to mark as read
+        
+    Returns:
+        Updated message
+    """
+    
+    # Verify agent ownership
+    stmt = select(Agent).where(
+        and_(
+            Agent.id == agent_id,
+            Agent.owner_id == current_user.id,
+            Agent.is_active == True
+        )
+    )
+    result = await db.execute(stmt)
+    agent = result.scalar_one_or_none()
+    
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found or you don't have permission"
+        )
+    
+    # Get the message and verify the agent is the receiver
+    stmt = select(Message).where(
+        and_(
+            Message.id == message_id,
+            Message.receiver_id == agent_id
+        )
+    )
+    result = await db.execute(stmt)
+    message = result.scalar_one_or_none()
+    
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found or this agent is not the receiver"
+        )
+    
+    # Mark as read
+    message.is_read = True
+    
+    try:
+        await db.commit()
+        await db.refresh(message)
+        
+        # Clear cache
+        await cache_delete(f"agent_messages:{agent_id}")
+        
+        # Publish event
+        await publish_event("message.read", {
+            "message_id": str(message_id),
+            "agent_id": str(agent_id)
+        })
+        
+        return message_schemas.MessageResponse(
+            id=message.id,
+            sender_id=message.sender_id,
+            receiver_id=message.receiver_id,
+            performative=message.performative,
+            content=message.content,
+            protocol=message.protocol,
+            conversation_id=message.conversation_id,
+            in_reply_to=message.in_reply_to,
+            is_read=message.is_read,
+            created_at=message.created_at
+        )
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to mark message as read: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark message as read"
         )
 
 @router.get("/{agent_id}/metrics", response_model=schemas.AgentMetrics)
