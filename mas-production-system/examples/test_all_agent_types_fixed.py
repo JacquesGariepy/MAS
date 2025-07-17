@@ -318,7 +318,7 @@ async def main():
             
             message_data = {
                 "receiver_id": cognitive_agent["id"],
-                "performative": "query-ref",
+                "performative": "query",
                 "content": {
                     "query": "Analyse comparative des stratégies A et B",
                     "context": "Optimisation des ressources",
@@ -379,7 +379,7 @@ async def main():
                 
                 message2_data = {
                     "receiver_id": cognitive_agent["id"],
-                    "performative": "accept-proposal",
+                    "performative": "accept",
                     "content": {
                         "accepted": True,
                         "comments": "Excellente proposition, démarrage immédiat"
