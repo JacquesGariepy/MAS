@@ -163,7 +163,16 @@ class LLMService:
             if json_response:
                 # For phi-4-mini-reasoning, be more explicit about JSON format
                 if "phi-4-mini-reasoning" in self.model:
-                    user_content = f"{prompt}\n\nRespond ONLY with a valid JSON object. Start your response with {{ and end with }}. No other text."
+                    user_content = f"""{prompt}
+
+You MUST end your response with a valid JSON object. After any reasoning or thinking, provide your final response in this EXACT format:
+
+FINAL_JSON_RESPONSE:
+{{
+    "your_json_keys": "your_json_values"
+}}
+
+The JSON object MUST start with {{ and end with }}. Do not include any text after the closing }}."""
                 else:
                     user_content += "\n\nIMPORTANT: Respond with valid JSON only. Do not include any text before or after the JSON object."
             
@@ -219,6 +228,18 @@ class LLMService:
                     logger.error(f"Failed to parse JSON response: {e}")
                     logger.error(f"Raw response: {response_text[:500]}...")
                     
+                    # For phi-4-mini-reasoning, try to extract meaningful content
+                    if "phi-4-mini-reasoning" in self.model and response_text:
+                        # Try to create a structured response from the reasoning text
+                        fallback_data = self._extract_reasoning_content(response_text, prompt)
+                        if fallback_data:
+                            return {
+                                "success": True,
+                                "response": fallback_data,
+                                "raw_text": response_text,
+                                "extracted_from_reasoning": True
+                            }
+                    
                     # Tentative de récupération
                     return {
                         "success": False,
@@ -272,23 +293,52 @@ class LLMService:
     
     def _clean_json_response(self, text: str) -> str:
         """Nettoie la réponse pour extraire le JSON valide"""
+        import re
+        
         # Supprime les espaces en début/fin
+        text = text.strip()
+        
+        # First, remove any system-reminder tags that might be present
+        text = re.sub(r'<system-reminder>.*?</system-reminder>', '', text, flags=re.DOTALL)
         text = text.strip()
         
         # For phi-4-mini-reasoning, try to extract JSON from reasoning text
         if "phi-4-mini-reasoning" in self.model:
-            # Look for common JSON patterns that might appear after reasoning
-            import re
             
-            # Try to find JSON object pattern
-            json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-            matches = list(re.finditer(json_pattern, text))
+            # First, try to find JSON after common delimiters
+            # Look for patterns like "Response:", "JSON:", "Output:", etc.
+            delimiter_patterns = [
+                r'FINAL_JSON_RESPONSE:\s*(\{.+\})',  # Our specific marker
+                r'(?:Response|JSON|Output|Result):\s*(\{.+\})',
+                r'```json\s*(\{.+?\})\s*```',
+                r'```\s*(\{.+?\})\s*```',
+                r'\n\s*(\{.+\})\s*$',  # JSON at the end of text
+                r'(?:Response|JSON|Output|Result):\s*(\[.+\])',  # Arrays
+                r'```json\s*(\[.+?\])\s*```',  # Arrays in code blocks
+                r'\n\s*(\[.+\])\s*$'  # Arrays at the end
+            ]
+            
+            for pattern in delimiter_patterns:
+                match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+                if match:
+                    try:
+                        json_str = match.group(1)
+                        json.loads(json_str)
+                        return json_str
+                    except:
+                        pass
+            
+            # Try to find more complex JSON object pattern with nested objects
+            json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
+            matches = list(re.finditer(json_pattern, text, re.DOTALL))
             
             if matches:
-                # Get the last (most complete) JSON object
+                # Try from the end (most likely to be complete)
                 for match in reversed(matches):
                     try:
                         json_str = match.group(0)
+                        # Clean up common issues
+                        json_str = json_str.replace('\n', ' ').replace('\r', '')
                         # Validate it's actually JSON
                         json.loads(json_str)
                         return json_str
@@ -296,13 +346,14 @@ class LLMService:
                         continue
             
             # Try to find JSON array pattern
-            array_pattern = r'\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]'
-            matches = list(re.finditer(array_pattern, text))
+            array_pattern = r'\[(?:[^\[\]]|(?:\[[^\[\]]*\]))*\]'
+            matches = list(re.finditer(array_pattern, text, re.DOTALL))
             
             if matches:
                 for match in reversed(matches):
                     try:
                         json_str = match.group(0)
+                        json_str = json_str.replace('\n', ' ').replace('\r', '')
                         json.loads(json_str)
                         return json_str
                     except:
@@ -324,6 +375,60 @@ class LLMService:
             return text[start_idx:end_idx + 1]
         
         return text
+    
+    def _extract_reasoning_content(self, text: str, prompt: str) -> Optional[Dict[str, Any]]:
+        """Extrait du contenu structuré du texte de raisonnement"""
+        try:
+            # Analyze the prompt to understand what kind of response is expected
+            prompt_lower = prompt.lower()
+            
+            # For agent analysis/perception prompts
+            if any(word in prompt_lower for word in ['analyze', 'perception', 'belief', 'desire']):
+                # Extract key concepts from the reasoning text
+                response = {
+                    "analysis": {
+                        "environment_changes": [],
+                        "desire_opportunities": [],
+                        "threats": [],
+                        "trends": []
+                    }
+                }
+                
+                # Simple keyword extraction from reasoning text
+                text_lower = text.lower()
+                
+                if "no new information" in text_lower or "no changes" in text_lower:
+                    response["analysis"]["environment_changes"] = ["No significant changes detected"]
+                    
+                if "opportunity" in text_lower:
+                    response["analysis"]["desire_opportunities"] = ["Potential opportunities identified"]
+                    
+                if "threat" in text_lower or "risk" in text_lower:
+                    response["analysis"]["threats"] = ["Potential risks identified"]
+                    
+                if "trend" in text_lower or "pattern" in text_lower:
+                    response["analysis"]["trends"] = ["Patterns detected in current state"]
+                
+                return response
+            
+            # For decision/action prompts
+            elif any(word in prompt_lower for word in ['decide', 'action', 'plan']):
+                return {
+                    "decision": "Continue monitoring",
+                    "action": "wait",
+                    "reasoning": "Extracted from reasoning process"
+                }
+            
+            # Generic fallback structure
+            return {
+                "status": "processed",
+                "content": "Response extracted from reasoning",
+                "reasoning_detected": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to extract reasoning content: {e}")
+            return None
     
     def _create_fallback_response(self, prompt: str) -> Dict[str, Any]:
         """Crée une réponse de fallback en cas d'erreur"""

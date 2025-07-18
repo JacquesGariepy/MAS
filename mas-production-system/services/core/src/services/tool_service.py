@@ -62,6 +62,14 @@ class ToolRegistry:
         except Exception as e:
             logger.error(f"Failed to load coding tools: {e}")
         
+        # Import and register filesystem tool
+        try:
+            from src.tools.filesystem_tool import FileSystemTool
+            self.register_tool(FileSystemTool())
+            logger.info("FileSystemTool registered successfully")
+        except Exception as e:
+            logger.error(f"Failed to load filesystem tool: {e}")
+        
         # Register other built-in tools
         self.register_tool(WebSearchTool())
         self.register_tool(FileReadTool())

@@ -63,7 +63,19 @@ class HybridAgent(BaseAgent):
     
     async def perceive(self, environment: Dict[str, Any]) -> Dict[str, Any]:
         """Perceive environment and assess complexity"""
-        perception = await super().perceive(environment)
+        # Ensure environment is not None
+        if environment is None:
+            environment = {}
+            
+        # Create basic perception structure
+        perception = {
+            "timestamp": asyncio.get_event_loop().time(),
+            "environment": environment,
+            "messages": environment.get("messages", []),
+            "tasks": environment.get("tasks", []),
+            "agents": environment.get("agents", []),
+            "conflicts": environment.get("conflicts", [])
+        }
         
         # Assess complexity of current situation
         complexity = self._assess_complexity(perception)
@@ -87,6 +99,8 @@ class HybridAgent(BaseAgent):
         
         # Check message complexity
         messages = perception.get("messages", [])
+        if messages is None:
+            messages = []
         for msg in messages:
             # Complex performatives require more thinking
             if msg.get("performative") in ["propose", "negotiate", "query"]:
@@ -100,6 +114,8 @@ class HybridAgent(BaseAgent):
         
         # Check task complexity
         tasks = perception.get("tasks", [])
+        if tasks is None:
+            tasks = []
         for task in tasks:
             if task.get("priority") == "critical":
                 complexity += 0.4
@@ -107,10 +123,16 @@ class HybridAgent(BaseAgent):
                 complexity += 0.3
         
         # Check environmental factors
-        if len(perception.get("agents", [])) > 5:
+        agents = perception.get("agents", [])
+        if agents is None:
+            agents = []
+        if len(agents) > 5:
             complexity += 0.2  # Many agents require coordination
         
-        if perception.get("conflicts", []):
+        conflicts = perception.get("conflicts", [])
+        if conflicts is None:
+            conflicts = []
+        if conflicts:
             complexity += 0.5  # Conflicts require careful handling
         
         # Normalize to [0, 1]
@@ -192,20 +214,44 @@ class HybridAgent(BaseAgent):
             response = await self.llm_service.generate(
                 prompt=prompt,
                 temperature=0.7,
-                max_tokens=500
+                max_tokens=500,
+                json_response=True
             )
             
-            # Parse response into actions
-            parsed_actions = self._parse_cognitive_response(response)
+            # Check if response is valid
+            if not response or not isinstance(response, dict):
+                logger.warning(f"Invalid response from LLM for agent {self.name}: {response}")
+                return []
             
-            for action in parsed_actions:
-                action["processing_mode"] = "cognitive"
-                actions.append(action)
-            
-            self.cognitive_system["responses"] += len(actions)
+            # Extract the actual response content
+            if response.get('success') and response.get('response'):
+                llm_response = response['response']
+                
+                # Parse response into actions
+                if isinstance(llm_response, dict):
+                    # If LLM returned JSON, extract actions directly
+                    if 'actions' in llm_response:
+                        parsed_actions = llm_response['actions'] if isinstance(llm_response['actions'], list) else []
+                    else:
+                        # Try to create action from the response
+                        parsed_actions = [llm_response] if llm_response.get('type') else []
+                elif isinstance(llm_response, str):
+                    # Parse text response
+                    parsed_actions = self._parse_cognitive_response(llm_response)
+                else:
+                    parsed_actions = []
+                
+                for action in parsed_actions:
+                    if isinstance(action, dict):
+                        action["processing_mode"] = "cognitive"
+                        actions.append(action)
+                
+                self.cognitive_system["responses"] += len(actions)
+            else:
+                logger.warning(f"LLM response unsuccessful for agent {self.name}")
             
         except Exception as e:
-            logger.error(f"Cognitive processing failed for agent {self.name}: {e}")
+            logger.error(f"Cognitive processing failed for agent {self.name}: {e}", exc_info=True)
         
         return actions
     
@@ -234,9 +280,9 @@ class HybridAgent(BaseAgent):
         return {
             "current_perception": perception,
             "recent_history": self.mode_history[-10:],
-            "beliefs": self.beliefs,
-            "desires": self.desires,
-            "intentions": self.intentions,
+            "beliefs": self.bdi.beliefs,
+            "desires": self.bdi.desires,
+            "intentions": self.bdi.intentions,
             "capabilities": self.capabilities
         }
     
@@ -250,16 +296,36 @@ Current situation:
 - Complexity: {context['current_perception'].get('complexity', 0):.2f}
 
 My capabilities: {', '.join(self.capabilities)}
-My current beliefs: {self.beliefs}
-My desires: {', '.join(self.desires)}
+My current beliefs: {self.bdi.beliefs}
+My desires: {', '.join(self.bdi.desires)}
 
-What actions should I take? Provide a structured response with action type, target, and reasoning.
+Return a JSON object with this structure:
+{{
+    "actions": [
+        {{
+            "type": "action_type",
+            "target": "target_entity",
+            "content": "action content if needed",
+            "reasoning": "why this action"
+        }}
+    ]
+}}
+
+If no actions are needed, return: {{"actions": []}}
 """
         return prompt
     
     def _parse_cognitive_response(self, response: str) -> List[Dict[str, Any]]:
         """Parse LLM response into actions"""
         actions = []
+        
+        # Handle None or empty responses
+        if not response:
+            return actions
+        
+        # Ensure response is a string
+        if not isinstance(response, str):
+            response = str(response)
         
         # Simple parsing - in production this would be more sophisticated
         lines = response.strip().split('\n')
@@ -275,7 +341,7 @@ What actions should I take? Provide a structured response with action type, targ
             elif line.startswith("Content:"):
                 current_action["content"] = line.replace("Content:", "").strip()
         
-        if current_action:
+        if current_action and current_action.get("type"):
             actions.append(current_action)
         
         return actions
@@ -394,7 +460,7 @@ What actions should I take? Provide a structured response with action type, targ
             intentions = []
             
             # Analyze desires and form intentions
-            for desire in self.desires:
+            for desire in self.bdi.desires:
                 if self._should_pursue_desire(desire, perception):
                     intentions.append(f"pursue_{desire}")
             
