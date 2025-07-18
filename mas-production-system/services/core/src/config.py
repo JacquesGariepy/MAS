@@ -53,7 +53,6 @@ class Settings(BaseSettings):
     RABBITMQ_QUEUE_TTL: int = 3600000  # 1 hour
     
     # LLM Providers
-    LLM_PROVIDER: str = "lmstudio"
     LMSTUDIO_BASE_URL: str = "http://localhost:1234/v1"
     OLLAMA_HOST: str = "http://localhost:11434"
     OPENAI_API_KEY: Optional[str] = None
@@ -66,12 +65,13 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-sonnet"
     ANTHROPIC_MAX_TOKENS: int = 4000
     
-    LLM_PROVIDER: str = "openai"  # openai, ollama, lmstudio
+    LLM_PROVIDER: str = "openai"  # openai, ollama, lmstudio, mock
     LLM_BASE_URL: Optional[str] = None  # For Ollama/LM Studio
     LLM_API_KEY: Optional[str] = None
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 4000
+    ENABLE_MOCK_LLM: bool = False  # Enable mock mode for testing
     
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True

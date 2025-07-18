@@ -86,10 +86,33 @@ class CognitiveAgent(BaseAgent):
                 prompt=interpretation_prompt,
                 system_prompt="You are an intelligent agent analyzing your environment. Be concise and focus on actionable insights.",
                 temperature=0.3,
-                response_format="json"
+                json_response=True,  # Use json_response instead of response_format
+                max_tokens=300
             )
             
-            interpreted_perceptions = json.loads(response)
+            # Handle response format
+            if isinstance(response, dict):
+                if response.get('success'):
+                    # Extract the actual response content
+                    if 'response' in response:
+                        interpreted_perceptions = response['response']
+                    else:
+                        # Fallback structure
+                        interpreted_perceptions = {
+                            "changes": ["Environment analyzed"],
+                            "opportunities": ["Processing messages"],
+                            "threats": [],
+                            "patterns": ["Normal operation"]
+                        }
+                else:
+                    # Use fallback response if available
+                    if 'fallback_response' in response:
+                        interpreted_perceptions = response['fallback_response']
+                    else:
+                        interpreted_perceptions = {"status": "perception_limited", "raw": raw_perceptions}
+            else:
+                # Direct response (shouldn't happen with current LLM service)
+                interpreted_perceptions = {"status": "perception_processed", "data": str(response)}
             
             # Add to episodic memory
             self.episodic_memory.append({
@@ -152,34 +175,46 @@ class CognitiveAgent(BaseAgent):
                 prompt=deliberation_prompt,
                 system_prompt="You are an intelligent agent making strategic decisions. Think step by step.",
                 temperature=0.5,
-                response_format="json"
+                json_response=True,
+                max_tokens=500
             )
             
-            result = json.loads(response)
+            # Handle response format from LLM service
+            if isinstance(response, dict) and response.get('success'):
+                result = response.get('response', {})
+            else:
+                result = {}
             
             # Record reasoning
-            self.reasoning_history.append({
-                "timestamp": datetime.utcnow().isoformat(),
-                "reasoning": result.get("reasoning", ""),
-                "confidence": result.get("confidence", 0.5)
-            })
+            if isinstance(result, dict):
+                self.reasoning_history.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "reasoning": result.get("reasoning", ""),
+                    "confidence": result.get("confidence", 0.5)
+                })
             
             # Handle low confidence
-            if result.get("confidence", 0) < self.confidence_threshold:
+            if isinstance(result, dict) and result.get("confidence", 0) < self.confidence_threshold:
                 self.uncertainty_buffer.append(result)
                 if len(self.uncertainty_buffer) > 3:
                     # Too much uncertainty, request help or explore
+                    if "new_intentions" not in result:
+                        result["new_intentions"] = []
                     result["new_intentions"].append("seek_clarification")
             
             # Update current plan
-            if result.get("plan_sketch"):
+            if isinstance(result, dict) and result.get("plan_sketch"):
                 self.current_plan = result["plan_sketch"]
             
             # Drop intentions
-            for intention in result.get("drop_intentions", []):
-                await self.drop_intention(intention)
-            
-            return result.get("new_intentions", [])
+            if isinstance(result, dict):
+                for intention in result.get("drop_intentions", []):
+                    await self.drop_intention(intention)
+                
+                return result.get("new_intentions", [])
+            else:
+                # Fallback if result is not a dict
+                return []
             
         except Exception as e:
             logger.error(f"Deliberation failed: {str(e)}")
@@ -281,10 +316,15 @@ class CognitiveAgent(BaseAgent):
                 prompt=planning_prompt,
                 system_prompt="You are an intelligent agent creating actionable plans. Be specific and realistic.",
                 temperature=0.4,
-                response_format="json"
+                json_response=True,
+                max_tokens=600
             )
             
-            result = json.loads(response)
+            # Handle response format from LLM service
+            if isinstance(response, dict) and response.get('success'):
+                result = response.get('response', {})
+            else:
+                result = {}
             
             if result.get("feasible", False) and result.get("confidence", 0) >= 0.5:
                 return {
@@ -401,10 +441,15 @@ class CognitiveAgent(BaseAgent):
                 prompt=reflection_prompt,
                 system_prompt="You are reflecting on your performance to improve. Be honest and constructive.",
                 temperature=0.6,
-                response_format="json"
+                json_response=True,
+                max_tokens=400
             )
             
-            result = json.loads(response)
+            # Handle response format from LLM service
+            if isinstance(response, dict) and response.get('success'):
+                result = response.get('response', {})
+            else:
+                result = {}
             
             # Apply insights
             if result.get("belief_updates"):
@@ -429,6 +474,8 @@ class CognitiveAgent(BaseAgent):
     async def handle_message(self, message: Any):
         """Handle incoming messages with understanding"""
         
+        logger.info(f"Cognitive agent {self.name} handling message")
+        
         # Add to conversation history
         self.context.conversation_history.append({
             "type": "received",
@@ -436,14 +483,25 @@ class CognitiveAgent(BaseAgent):
             "timestamp": datetime.utcnow().isoformat()
         })
         
+        # Extract message details safely
+        try:
+            sender = getattr(message, 'sender', getattr(message, 'sender_id', 'unknown'))
+            performative = getattr(message, 'performative', 'unknown')
+            content = getattr(message, 'content', {})
+            
+            logger.info(f"Message details - From: {sender}, Type: {performative}, Content: {content}")
+        except Exception as e:
+            logger.error(f"Error extracting message details: {e}")
+            return
+        
         # Interpret message
         interpretation_prompt = f"""
         You are {self.name}, a {self.role} agent.
         
         You received a message:
-        From: {message.sender}
-        Performative: {message.performative}
-        Content: {json.dumps(message.content)}
+        From: {sender}
+        Performative: {performative}
+        Content: {json.dumps(content)}
         
         Current context:
         - Current task: {self.context.current_task}
@@ -464,10 +522,15 @@ class CognitiveAgent(BaseAgent):
                 prompt=interpretation_prompt,
                 system_prompt="You are interpreting communication to coordinate effectively.",
                 temperature=0.4,
-                response_format="json"
+                json_response=True,
+                max_tokens=400
             )
             
-            result = json.loads(response)
+            # Handle response format from LLM service
+            if isinstance(response, dict) and response.get('success'):
+                result = response.get('response', {})
+            else:
+                result = {}
             
             # Update beliefs based on message
             if result.get("belief_updates"):
@@ -526,10 +589,15 @@ class CognitiveAgent(BaseAgent):
                 prompt=task_analysis_prompt,
                 system_prompt="You are analyzing a task assignment. Be thorough and realistic.",
                 temperature=0.3,
-                response_format="json"
+                json_response=True,
+                max_tokens=400
             )
             
-            result = json.loads(response)
+            # Handle response format from LLM service
+            if isinstance(response, dict) and response.get('success'):
+                result = response.get('response', {})
+            else:
+                result = {}
             
             if result.get("can_complete", False):
                 # Add task-related desires

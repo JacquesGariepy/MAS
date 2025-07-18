@@ -1,0 +1,203 @@
+# Configuration améliorée pour MAS avec timeouts optimisés
+
+# Configuration de l'application
+app:
+  name: "MAS Production System"
+  version: "1.0.0"
+  debug: false
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false
+  log_level: "INFO"
+
+# Configuration de la base de données
+database:
+  url: "postgresql+asyncpg://mas_user:mas_password@db:5432/mas_db"
+  echo: false
+  pool_size: 20
+  max_overflow: 0
+  pool_pre_ping: true
+  pool_recycle: 3600
+
+# Configuration Redis améliorée
+redis:
+  url: "redis://redis:6379/0"
+  max_connections: 50
+  decode_responses: true
+  socket_timeout: 30
+  socket_connect_timeout: 30
+  socket_keepalive: true
+  socket_keepalive_options: {}
+  health_check_interval: 30
+
+# Configuration du service LLM avec timeouts optimisés
+llm:
+  provider: "openai"
+  api_key: ${LLM_API_KEY}
+  model: "gpt-4"
+  # Timeouts adaptés selon le type de tâche
+  timeout: 300  # 5 minutes par défaut (au lieu de 60)
+  timeout_simple: 60
+  timeout_normal: 180
+  timeout_complex: 300
+  timeout_reasoning: 600  # 10 minutes pour les modèles de raisonnement
+  
+  # Configuration spécifique pour les modèles
+  thinking_models:
+    - "o1-preview"
+    - "o1-mini" 
+    - "phi-4-mini-reasoning"
+  
+  # Paramètres de génération
+  max_tokens: 4000
+  temperature: 0.7
+  top_p: 0.9
+  frequency_penalty: 0.0
+  presence_penalty: 0.0
+  
+  # Configuration de retry améliorée
+  retry:
+    max_attempts: 5  # Plus de tentatives
+    initial_delay: 10  # Délai initial plus long
+    max_delay: 60
+    exponential_base: 2
+    
+  # Support du streaming
+  enable_streaming: true
+  stream_timeout: 1200  # 20 minutes pour le streaming
+
+# Configuration des agents avec timeouts appropriés
+agents:
+  # Timeout global pour les opérations d'agents
+  operation_timeout: 600  # 10 minutes (au lieu de 300)
+  
+  # Configuration par type d'agent
+  cognitive:
+    timeout: 300
+    max_memory_size: 50
+    learning_rate: 0.1
+    
+  reflexive:
+    timeout: 60
+    rule_evaluation_interval: 1.0
+    
+  hybrid:
+    timeout: 300
+    reflexive_confidence_threshold: 0.8
+    cognitive_confidence_threshold: 0.6
+    memory_buffer_size: 20
+    
+  # Limites de ressources
+  max_agents_per_user: 10
+  max_concurrent_tasks: 5
+  task_queue_size: 100
+
+# Configuration de la sécurité
+security:
+  secret_key: ${SECRET_KEY}
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+  password_min_length: 8
+  rate_limit:
+    requests_per_minute: 60
+    requests_per_hour: 1000
+
+# Configuration du monitoring
+monitoring:
+  enable_metrics: true
+  enable_tracing: true
+  metrics_port: 9090
+  
+  # Métriques spécifiques pour les timeouts
+  track_timeouts: true
+  timeout_alerts:
+    warning_threshold: 0.1  # Alerte si > 10% de timeouts
+    critical_threshold: 0.25  # Critique si > 25% de timeouts
+    
+  # Métriques de performance LLM
+  llm_metrics:
+    track_response_time: true
+    track_token_usage: true
+    track_error_rate: true
+    track_model_performance: true
+
+# Configuration des logs améliorée
+logging:
+  level: "INFO"
+  format: "json"
+  
+  # Logs spécifiques pour debug LLM
+  llm_debug:
+    log_prompts: true
+    log_responses: true
+    log_errors: true
+    max_response_length: 1000
+    
+  handlers:
+    console:
+      enabled: true
+      level: "INFO"
+    file:
+      enabled: true
+      level: "DEBUG"
+      path: "/app/logs/mas.log"
+      rotation: "daily"
+      retention: 7
+
+# Configuration CORS
+cors:
+  allow_origins: ["*"]
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+
+# Configuration des tâches asynchrones
+celery:
+  broker_url: "redis://redis:6379/1"
+  result_backend: "redis://redis:6379/2"
+  task_serializer: "json"
+  result_serializer: "json"
+  accept_content: ["json"]
+  timezone: "UTC"
+  enable_utc: true
+  
+  # Timeouts pour les tâches
+  task_time_limit: 1800  # 30 minutes
+  task_soft_time_limit: 1500  # 25 minutes
+
+# Configuration de santé
+health:
+  check_interval: 30
+  
+  # Vérifications spécifiques
+  checks:
+    database: true
+    redis: true
+    llm_service: true
+    disk_usage: true
+    memory_usage: true
+    
+  # Seuils d'alerte
+  thresholds:
+    disk_usage_percent: 90
+    memory_usage_percent: 85
+    response_time_ms: 5000
+    
+# Feature flags pour les améliorations
+features:
+  # Nouvelles fonctionnalités
+  improved_llm_service: true
+  adaptive_timeouts: true
+  streaming_responses: true
+  enhanced_error_handling: true
+  smart_retry_logic: true
+  
+  # Templates de prompts améliorés
+  structured_prompts: true
+  context_filtering: true
+  
+  # Monitoring avancé
+  detailed_metrics: true
+  performance_profiling: true

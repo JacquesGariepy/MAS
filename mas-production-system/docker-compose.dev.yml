@@ -22,11 +22,13 @@ services:
       # Redis
       - REDIS_URL=redis://redis:6379/0
       
-      # LLM (configurable via .env)
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
-      - LLM_API_KEY=${LLM_API_KEY}
+      # LLM (configurable via .env with fallback to mock)
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://localhost:1234/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-mock_key_for_testing}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-mock_key_for_testing}
+      - ENABLE_MOCK_LLM=${ENABLE_MOCK_LLM:-true}
       
     volumes:
       # Mount source code pour hot reload

@@ -32,6 +32,7 @@ from src.cache import init_cache
 from src.message_broker import init_message_broker
 from src.monitoring import init_monitoring
 from src.utils.logger import get_logger
+from src.services.message_delivery import get_delivery_service
 
 # Use uvloop for better async performance
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -113,12 +114,20 @@ async def startup_event():
     # Initialize monitoring
     init_monitoring()
     
+    # Start message delivery service
+    delivery_service = get_delivery_service()
+    await delivery_service.start()
+    
     logger.info("All services initialized successfully")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("Shutting down services...")
+    
+    # Stop message delivery service
+    delivery_service = get_delivery_service()
+    await delivery_service.stop()
     
     # Close database connections
     await engine.dispose()

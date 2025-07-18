@@ -4,7 +4,7 @@ Agent service with complete lifecycle management
 
 import asyncio
 from typing import List, Dict, Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 import json
 
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import Agent, Memory, Message, Task
 from src.schemas.agents import AgentCreate, AgentUpdate, MemoryCreate
-from src.core.agents import AgentFactory, AgentRuntime
+from src.core.agents import AgentFactory, get_agent_runtime
 from src.services.llm_service import LLMService
 from src.services.embedding_service import EmbeddingService
 from src.utils.logger import get_logger
@@ -27,7 +27,7 @@ class AgentService:
     
     def __init__(self):
         self.agent_factory = AgentFactory()
-        self.runtime = AgentRuntime()
+        self.runtime = get_agent_runtime()  # Use global runtime instance
         # self.embedding_service = EmbeddingService()  # TODO: fix initialization
         
     async def create_agent(
@@ -40,6 +40,7 @@ class AgentService:
         
         # Create database model
         agent = Agent(
+            id=uuid4(),  # Explicitly generate UUID
             owner_id=owner_id,
             name=agent_data.name,
             role=agent_data.role,
@@ -113,7 +114,8 @@ class AgentService:
         # Create runtime instance if not exists
         runtime_agent = self.runtime.get_running_agent(agent.id)
         if not runtime_agent:
-            llm_service = LLMService()  # Get appropriate LLM service
+            # Create LLM service with proper configuration
+            llm_service = LLMService()
             runtime_agent = self.agent_factory.create_agent(
                 agent_type=agent.agent_type,
                 agent_id=agent.id,

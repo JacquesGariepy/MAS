@@ -175,7 +175,11 @@ class AgentRuntime:
     
     async def is_agent_running(self, agent_id: UUID) -> bool:
         """Check if an agent is running"""
-        return agent_id in self.running_agents
+        # Agent is only considered running if it has an active task
+        if agent_id not in self.running_agents:
+            return False
+        task = self.agent_tasks.get(agent_id)
+        return task is not None and not task.done()
 
 # Global runtime instance
 _agent_runtime: Optional[AgentRuntime] = None

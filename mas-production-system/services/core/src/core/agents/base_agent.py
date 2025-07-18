@@ -132,16 +132,35 @@ class BaseAgent(ABC):
         
         logger.info(f"Agent {self.name} starting...")
         
+        # Track BDI cycle timing
+        last_bdi_cycle = asyncio.get_event_loop().time()  # Start with current time to delay first BDI cycle
+        bdi_cycle_interval = 5.0  # Run BDI cycle every 5 seconds
+        
         try:
+            iteration = 0
             while self._running:
-                # Check for messages
-                await self._process_messages()
+                iteration += 1
+                current_time = asyncio.get_event_loop().time()
+                
+                # Debug every 10 iterations
+                if iteration % 10 == 0:
+                    logger.info(f"Agent {self.name} loop iteration {iteration}, queue size: {self._message_queue.qsize()}")
+                
+                # ALWAYS process messages first (high priority)
+                if not self._message_queue.empty():
+                    logger.info(f"Agent {self.name} has {self._message_queue.qsize()} messages to process")
+                    await self._process_messages()
+                else:
+                    logger.debug(f"Agent {self.name} no messages in queue")
                 
                 # Check for tasks
                 await self._process_tasks()
                 
-                # BDI cycle
-                await self._bdi_cycle()
+                # BDI cycle - run periodically, not every loop iteration
+                if current_time - last_bdi_cycle > bdi_cycle_interval:
+                    logger.info(f"Agent {self.name} starting BDI cycle")
+                    await self._bdi_cycle()
+                    last_bdi_cycle = current_time
                 
                 # Small delay to prevent CPU spinning
                 await asyncio.sleep(0.1)
@@ -158,6 +177,8 @@ class BaseAgent(ABC):
     async def _bdi_cycle(self):
         """Execute one BDI cycle"""
         try:
+            logger.debug(f"Agent {self.name} starting BDI cycle")
+            
             # Perceive
             perceptions = await self.perceive(self.context.environment)
             await self.update_beliefs(perceptions)
@@ -172,6 +193,8 @@ class BaseAgent(ABC):
                 actions = await self.act()
                 for action in actions:
                     await self._execute_action(action)
+            
+            logger.debug(f"Agent {self.name} completed BDI cycle")
                     
         except Exception as e:
             logger.error(f"Error in BDI cycle for agent {self.name}: {str(e)}")
@@ -226,11 +249,13 @@ class BaseAgent(ABC):
         """Process incoming messages"""
         while not self._message_queue.empty():
             message = await self._message_queue.get()
+            logger.info(f"Agent {self.name} processing message from queue")
             try:
                 await self.handle_message(message)
                 self.metrics["messages_processed"] += 1
+                logger.info(f"Agent {self.name} successfully processed message")
             except Exception as e:
-                logger.error(f"Error processing message: {str(e)}")
+                logger.error(f"Error processing message: {str(e)}", exc_info=True)
                 self.metrics["errors"] += 1
     
     async def _process_tasks(self):
@@ -259,7 +284,9 @@ class BaseAgent(ABC):
     
     async def receive_message(self, message: Any):
         """Receive a message (called by environment)"""
+        logger.info(f"Agent {self.name} received message, adding to queue")
         await self._message_queue.put(message)
+        logger.info(f"Agent {self.name} message queue size: {self._message_queue.qsize()}")
     
     async def add_task(self, task: Any):
         """Add a task to the agent's queue"""

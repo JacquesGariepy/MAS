@@ -18,6 +18,7 @@ from src.schemas import agents as schemas
 from src.schemas import messages as message_schemas
 from src.services.agent_service import AgentService
 from src.services.llm_service import LLMService
+from src.services.message_delivery import get_delivery_service
 from src.utils.logger import get_logger
 from src.cache import delete as cache_delete, get as cache_get, set as cache_set
 from src.message_broker import publish_event
@@ -679,7 +680,14 @@ async def send_message(
         # Clear receiver's cache to ensure they see new messages
         await cache_delete(f"agent_messages:{message_data.receiver_id}")
         
-        logger.info(f"Message {message.id} sent from agent {agent_id} to {message_data.receiver_id} with performative '{message.performative}'")
+        # Deliver message to running agent
+        delivery_service = get_delivery_service()
+        delivered = await delivery_service.deliver_message_from_db(db, message.id)
+        
+        if delivered:
+            logger.info(f"Message {message.id} sent and delivered to agent {message_data.receiver_id}")
+        else:
+            logger.info(f"Message {message.id} sent from agent {agent_id} to {message_data.receiver_id} (queued for delivery)")
         
         # Step 5: Return the created message
         return message_schemas.MessageResponse(
