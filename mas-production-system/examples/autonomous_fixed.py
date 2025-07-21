@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Agent Autonome Complet - Résout n'importe quelle requête de manière autonome
+Agent Autonome Complet - Version corrigée
+Résout n'importe quelle requête de manière autonome
 Utilise le framework MAS avec agents cognitifs, LLM et logging complet
 """
 
@@ -201,6 +202,7 @@ class AutonomousAgent:
         self.sub_agents = []
         self.tasks = []
         self.results = {}
+        self.initialized = False  # Flag pour vérifier l'initialisation
         
         # Logger principal
         self.logger = logging.getLogger("AUTONOMOUS_AGENT")
@@ -208,6 +210,10 @@ class AutonomousAgent:
         
     async def initialize(self):
         """Initialiser l'agent et ses ressources"""
+        if self.initialized:
+            self.logger.info("Agent déjà initialisé")
+            return
+            
         self.logger.info("Initialisation des ressources...")
         
         # Obtenir FileSystemTool
@@ -223,6 +229,7 @@ class AutonomousAgent:
         # Créer les agents de base
         await self._create_base_agents()
         
+        self.initialized = True
         self.logger.info("Agent autonome prêt")
         
     async def _create_base_agents(self):
@@ -307,9 +314,14 @@ class AutonomousAgent:
                 
             except Exception as e:
                 self.logger.error(f"Erreur création agent {config['name']}: {str(e)}")
+                self.logger.error(traceback.format_exc())
     
     async def process_request(self, request: str) -> Dict[str, Any]:
         """Traiter une requête de manière complètement autonome"""
+        # S'assurer que l'agent est initialisé
+        if not self.initialized:
+            await self.initialize()
+            
         self.logger.info("="*80)
         self.logger.info(f"NOUVELLE REQUÊTE: {request}")
         self.logger.info("="*80)
@@ -411,6 +423,11 @@ class AutonomousAgent:
         results = []
         completed = set()
         
+        # Vérifier que nous avons des agents
+        if not self.sub_agents:
+            self.logger.error("Aucun agent disponible pour exécuter les tâches!")
+            await self._create_base_agents()
+            
         while len(completed) < len(subtasks):
             # Trouver les tâches exécutables (sans dépendances non satisfaites)
             executable = []
@@ -428,33 +445,49 @@ class AutonomousAgent:
             batch_tasks = []
             for idx, task, data in executable:
                 # Assigner à l'agent approprié
-                agent = self._find_suitable_agent(data.get('type', 'general'))
-                task.assigned_agent = agent
+                agent_info = self._find_suitable_agent(data.get('type', 'general'))
+                if not agent_info:
+                    self.logger.error(f"Aucun agent trouvé pour la tâche {task.description}")
+                    task.status = TaskStatus.FAILED
+                    task.error = "Aucun agent disponible"
+                    results.append({"error": "Aucun agent disponible"})
+                    completed.add(idx)
+                    continue
+                    
+                task.assigned_agent = agent_info
                 task.status = TaskStatus.EXECUTING
                 
                 # Créer le contexte avec les résultats des dépendances
                 context = self._build_context(data.get('dependencies', []), results)
                 
                 # Exécuter
-                batch_tasks.append(self._execute_single_task(task, data, agent, context))
+                batch_tasks.append(self._execute_single_task(task, data, agent_info, context))
             
             # Attendre la complétion du batch
-            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-            
-            # Traiter les résultats
-            for (idx, task, data), result in zip(executable, batch_results):
-                if isinstance(result, Exception):
-                    self.logger.error(f"Erreur sous-tâche {idx+1}: {str(result)}")
-                    task.status = TaskStatus.FAILED
-                    task.error = str(result)
-                    results.append({"error": str(result)})
-                else:
-                    task.status = TaskStatus.COMPLETED
-                    task.result = result
-                    results.append(result)
-                    self.logger.info(f"Sous-tâche {idx+1} complétée")
+            if batch_tasks:
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
                 
-                completed.add(idx)
+                # Traiter les résultats
+                j = 0
+                for (idx, task, data) in executable:
+                    if task.status == TaskStatus.FAILED:
+                        continue
+                        
+                    result = batch_results[j]
+                    j += 1
+                    
+                    if isinstance(result, Exception):
+                        self.logger.error(f"Erreur sous-tâche {idx+1}: {str(result)}")
+                        task.status = TaskStatus.FAILED
+                        task.error = str(result)
+                        results.append({"error": str(result)})
+                    else:
+                        task.status = TaskStatus.COMPLETED
+                        task.result = result
+                        results.append(result)
+                        self.logger.info(f"Sous-tâche {idx+1} complétée")
+                    
+                    completed.add(idx)
         
         return results
     
@@ -528,7 +561,7 @@ class AutonomousAgent:
         
         return result
     
-    def _find_suitable_agent(self, task_type: str) -> Dict[str, Any]:
+    def _find_suitable_agent(self, task_type: str) -> Optional[Dict[str, Any]]:
         """Trouver l'agent le plus adapté pour un type de tâche"""
         type_mapping = {
             "research": "analyst",
@@ -694,6 +727,15 @@ async def main():
                 print(f"Sous-tâches exécutées: {result.get('subtasks_count', 0)}")
                 print(f"Taux de succès: {result.get('success_rate', 0):.1f}%")
                 print("\n📄 Un rapport détaillé a été généré")
+                
+                # Afficher les fichiers créés
+                total_files = 0
+                for st_result in result.get('subtasks_results', []):
+                    if st_result.get('created_files'):
+                        total_files += len(st_result['created_files'])
+                        
+                if total_files > 0:
+                    print(f"\n📁 {total_files} fichier(s) créé(s) dans agent_workspace")
             else:
                 print(f"Erreur: {result.get('error', 'Erreur inconnue')}")
             
@@ -713,6 +755,7 @@ async def main():
 if __name__ == "__main__":
     # Exemples de requêtes que l'agent peut traiter:
     print("\n📌 Exemples de requêtes:")
+    print("- Créer un test unitaire simple en Python pour une fonction qui additionne deux nombres")
     print("- Créer une application web de gestion de tâches avec React et FastAPI")
     print("- Analyser les tendances du marché de l'IA et proposer une stratégie d'investissement")
     print("- Écrire un article de blog sur les meilleures pratiques DevOps")
