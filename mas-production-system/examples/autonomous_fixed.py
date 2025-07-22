@@ -196,6 +196,25 @@ Sous-tâche: {subtask['description']}
 Type: {subtask.get('type', 'general')}
 Contexte: {context}
 
+IMPORTANT - STRUCTURE DU PROJET:
+Tous les fichiers doivent respecter la structure Python standard:
+- src/ : code source principal
+  - src/core/ : logique métier principale
+  - src/models/ : modèles de données
+  - src/services/ : services et intégrations
+  - src/utils/ : utilitaires et helpers
+- tests/ : tests unitaires et d'intégration
+  - tests/unit/ : tests unitaires
+  - tests/integration/ : tests d'intégration
+- docs/ : documentation
+- config/ : fichiers de configuration
+- scripts/ : scripts utilitaires
+
+Lors de la création de fichiers:
+- NE PAS créer de répertoires spécifiques à la tâche
+- Utiliser UNIQUEMENT les chemins relatifs à partir de la racine du projet
+- Placer chaque fichier dans le bon répertoire selon sa fonction
+
 Fournir une solution complète avec:
 - Étapes détaillées
 - Code si nécessaire
@@ -216,7 +235,15 @@ Répondre en JSON:
             "description": "description du fichier"
         }}
     ]
-}}"""
+}}
+
+Exemples de chemins corrects:
+- "main.py" pour un fichier principal
+- "calculator.py" pour un module simple
+- "test_calculator.py" pour un test
+- "api_service.py" pour un service
+- "user_model.py" pour un modèle
+- "README.md" pour la documentation"""
         
         result = await self.generate(prompt, json_response=True)
         return result.get('response', {})
@@ -262,6 +289,8 @@ class AutonomousAgent:
         self.tasks = []
         self.results = {}
         self.initialized = False  # Flag pour vérifier l'initialisation
+        self.current_project_path = None  # Chemin du projet principal
+        self.project_structure = None  # Structure du projet à maintenir
         
         # Logger principal
         self.logger = logging.getLogger("AUTONOMOUS_AGENT")
@@ -392,6 +421,9 @@ class AutonomousAgent:
             status=TaskStatus.ANALYZING
         )
         self.tasks.append(main_task)
+        
+        # Initialiser la structure du projet pour cette requête
+        await self._initialize_project_structure(main_task)
         
         try:
             # 1. Analyser la requête
@@ -550,6 +582,134 @@ class AutonomousAgent:
         
         return results
     
+    async def _initialize_project_structure(self, main_task: Task):
+        """Initialiser la structure du projet principal pour toute la requête"""
+        if not self.filesystem_tool:
+            return
+            
+        # Créer un nom de projet basé sur la requête
+        project_name = f"project_{main_task.id[:8]}"
+        
+        try:
+            # Créer le répertoire principal du projet
+            project_result = await self.filesystem_tool.execute(
+                action="create_directory",
+                agent_id=str(self.agent_id),
+                project_name=project_name
+            )
+            
+            if project_result.success:
+                self.current_project_path = project_result.data['project_path']
+                self.logger.info(f"Projet principal créé: {self.current_project_path}")
+                
+                # Définir la structure standard Python
+                self.project_structure = {
+                    "src": {
+                        "__init__.py": "",
+                        "core": {
+                            "__init__.py": ""
+                        },
+                        "utils": {
+                            "__init__.py": ""
+                        },
+                        "services": {
+                            "__init__.py": ""
+                        },
+                        "models": {
+                            "__init__.py": ""
+                        }
+                    },
+                    "tests": {
+                        "__init__.py": "",
+                        "unit": {
+                            "__init__.py": ""
+                        },
+                        "integration": {
+                            "__init__.py": ""
+                        }
+                    },
+                    "docs": {},
+                    "config": {},
+                    "scripts": {},
+                    "requirements.txt": "",
+                    "setup.py": "",
+                    "README.md": f"# {project_name}\n\nProjet généré automatiquement pour: {main_task.description}\n",
+                    ".gitignore": "__pycache__/\n*.pyc\n.venv/\nvenv/\n.env\n.DS_Store\n"
+                }
+                
+                # Créer la structure initiale
+                await self._create_project_structure(self.current_project_path, self.project_structure)
+                
+        except Exception as e:
+            self.logger.error(f"Erreur lors de l'initialisation de la structure du projet: {e}")
+            
+    async def _create_project_structure(self, base_path: str, structure: Dict, parent_path: str = ""):
+        """Créer récursivement la structure du projet"""
+        for name, content in structure.items():
+            path = os.path.join(parent_path, name) if parent_path else name
+            full_path = os.path.join(base_path, path)
+            
+            if isinstance(content, dict):
+                # C'est un répertoire
+                os.makedirs(full_path, exist_ok=True)
+                await self._create_project_structure(base_path, content, path)
+            else:
+                # C'est un fichier
+                try:
+                    file_result = await self.filesystem_tool.execute(
+                        action="write",
+                        file_path=full_path,
+                        content=content,
+                        agent_id=str(self.agent_id)
+                    )
+                    if file_result.success:
+                        self.logger.debug(f"Fichier créé: {path}")
+                except Exception as e:
+                    self.logger.error(f"Erreur création fichier {path}: {e}")
+    
+    def _determine_file_location(self, file_info: Dict[str, Any]) -> str:
+        """Déterminer l'emplacement approprié dans la structure du projet"""
+        file_path = file_info['path']
+        
+        # Analyser le chemin pour déterminer la catégorie
+        if 'test' in file_path.lower():
+            # Fichiers de test
+            if 'unit' in file_path.lower():
+                return f"tests/unit/{os.path.basename(file_path)}"
+            elif 'integration' in file_path.lower():
+                return f"tests/integration/{os.path.basename(file_path)}"
+            else:
+                return f"tests/{os.path.basename(file_path)}"
+        
+        elif file_path.endswith('.py'):
+            # Fichiers Python source
+            if 'model' in file_path.lower():
+                return f"src/models/{os.path.basename(file_path)}"
+            elif 'service' in file_path.lower():
+                return f"src/services/{os.path.basename(file_path)}"
+            elif 'util' in file_path.lower() or 'helper' in file_path.lower():
+                return f"src/utils/{os.path.basename(file_path)}"
+            elif 'core' in file_path.lower() or 'main' in file_path.lower():
+                return f"src/core/{os.path.basename(file_path)}"
+            else:
+                return f"src/{os.path.basename(file_path)}"
+        
+        elif file_path.endswith('.md'):
+            # Documentation
+            return f"docs/{os.path.basename(file_path)}"
+        
+        elif file_path.endswith(('.json', '.yaml', '.yml', '.ini', '.conf')):
+            # Fichiers de configuration
+            return f"config/{os.path.basename(file_path)}"
+        
+        elif file_path.endswith('.sh') or 'script' in file_path.lower():
+            # Scripts
+            return f"scripts/{os.path.basename(file_path)}"
+        
+        else:
+            # Par défaut, à la racine du projet
+            return os.path.basename(file_path)
+    
     async def _execute_single_task(self, task: Task, data: Dict, agent: Any, context: str) -> Dict[str, Any]:
         """Exécuter une seule sous-tâche avec un agent"""
         self.logger.info(f"Exécution de: {task.description}")
@@ -559,7 +719,14 @@ class AutonomousAgent:
         await agent['agent'].update_beliefs({
             "current_task": task.description,
             "task_type": data.get('type', 'general'),
-            "context": context
+            "context": context,
+            "project_structure_rules": {
+                "message": "RESPECTER LA STRUCTURE DU PROJET",
+                "src_for_code": True,
+                "tests_for_tests": True,
+                "no_task_specific_dirs": True,
+                "use_relative_paths": True
+            }
         })
         
         # Pour les agents cognitifs/hybrid, utiliser le LLM
@@ -580,45 +747,74 @@ class AutonomousAgent:
         # Si des fichiers doivent être créés
         if result and self.filesystem_tool and result.get('files_to_create'):
             try:
-                # Créer un projet pour cette tâche si nécessaire
-                project_name = f"task_{task.id[:8]}"
-                project_result = await self.filesystem_tool.execute(
-                    action="create_directory",
-                    agent_id=str(self.agent_id),
-                    project_name=project_name
-                )
+                if not self.current_project_path:
+                    self.logger.error("Aucun projet principal initialisé")
+                    return result
+                    
+                # Utiliser le projet principal existant
+                result['project_path'] = self.current_project_path
+                self.logger.info(f"Utilisation du projet principal: {self.current_project_path}")
                 
-                if project_result.success:
-                    result['project_path'] = project_result.data['project_path']
-                    self.logger.info(f"Projet créé: {project_result.data['project_path']}")
+                # Créer chaque fichier dans la structure appropriée
+                created_files = []
+                for file_info in result['files_to_create']:
+                    # Déterminer l'emplacement approprié dans la structure
+                    structured_path = self._determine_file_location(file_info)
+                    full_path = os.path.join(self.current_project_path, structured_path)
                     
-                    # Créer chaque fichier
-                    created_files = []
-                    for file_info in result['files_to_create']:
-                        file_path = f"projects/{self.agent_id}/{project_name}/{file_info['path']}"
-                        
-                        file_result = await self.filesystem_tool.execute(
-                            action="write",
-                            file_path=file_path,
-                            content=sanitize_unicode(file_info['content']),
-                            agent_id=str(self.agent_id)
-                        )
-                        
-                        if file_result.success:
-                            created_files.append({
-                                'path': file_result.data['file_path'],
-                                'size': file_result.data['size']
-                            })
-                            self.logger.info(f"Fichier créé: {file_info['path']}")
-                        else:
-                            self.logger.error(f"Erreur création fichier {file_info['path']}: {file_result.error}")
+                    # S'assurer que le répertoire parent existe
+                    parent_dir = os.path.dirname(full_path)
+                    os.makedirs(parent_dir, exist_ok=True)
                     
-                    result['created_files'] = created_files
+                    file_result = await self.filesystem_tool.execute(
+                        action="write",
+                        file_path=full_path,
+                        content=sanitize_unicode(file_info['content']),
+                        agent_id=str(self.agent_id)
+                    )
+                    
+                    if file_result.success:
+                        created_files.append({
+                            'path': structured_path,
+                            'full_path': file_result.data['file_path'],
+                            'size': file_result.data['size']
+                        })
+                        self.logger.info(f"Fichier créé dans la structure: {structured_path}")
+                        
+                        # Informer l'agent de l'emplacement du fichier dans la structure
+                        await agent['agent'].update_beliefs({
+                            f"file_created_{os.path.basename(structured_path)}": structured_path
+                        })
+                    else:
+                        self.logger.error(f"Erreur création fichier {structured_path}: {file_result.error}")
+                
+                result['created_files'] = created_files
+                
+                # Partager la structure du projet avec tous les agents
+                await self._share_project_structure_with_agents()
                     
             except Exception as e:
                 self.logger.error(f"Erreur lors de la création des fichiers: {e}")
         
         return result
+    
+    async def _share_project_structure_with_agents(self):
+        """Partager la structure du projet avec tous les agents"""
+        project_info = {
+            "project_path": self.current_project_path,
+            "structure": self.project_structure,
+            "message": "Tous les fichiers doivent être créés dans cette structure"
+        }
+        
+        for agent_info in self.sub_agents:
+            try:
+                await agent_info['agent'].update_beliefs({
+                    "project_structure": project_info,
+                    "working_directory": self.current_project_path
+                })
+                self.logger.debug(f"Structure partagée avec {agent_info['agent'].name}")
+            except Exception as e:
+                self.logger.error(f"Erreur partage structure avec {agent_info['agent'].name}: {e}")
     
     def _find_suitable_agent(self, task_type: str) -> Optional[Dict[str, Any]]:
         """Trouver l'agent le plus adapté pour un type de tâche"""
