@@ -34,3 +34,5 @@ claude-flow.bat
 claude-flow.ps1
 hive-mind-prompt-*.txt
 1/
+mas-production-system/agent_workspace/projects/
+mas-production-system/agent_workspace/projects/*

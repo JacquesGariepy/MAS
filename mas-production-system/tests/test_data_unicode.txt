@@ -1,0 +1,87 @@
+Test Data for Unicode Handling
+==============================
+
+1. Normal ASCII text:
+   Hello World! This is a test.
+
+2. UTF-8 with accents:
+   Café, naïve, résumé, château, façade
+
+3. Emojis and symbols:
+   🚀 🌟 ❤️ 🔥 🎉 ⚡ 🌈 🎯
+
+4. Various languages:
+   - English: Hello World
+   - Spanish: ¡Hola Mundo!
+   - French: Bonjour le Monde!
+   - German: Hallo Welt!
+   - Italian: Ciao Mondo!
+   - Portuguese: Olá Mundo!
+   - Russian: Привет мир!
+   - Chinese (Simplified): 你好世界！
+   - Chinese (Traditional): 你好世界！
+   - Japanese: こんにちは世界！
+   - Korean: 안녕하세요 세계!
+   - Arabic: مرحبا بالعالم!
+   - Hebrew: שלום עולם!
+   - Greek: Γεια σου κόσμε!
+
+5. Mathematical symbols:
+   ∑ ∏ ∞ ≠ ≤ ≥ ∈ ∉ ∪ ∩ ⊂ ⊃ √ ∛ ∜ π α β γ δ
+
+6. Currency symbols:
+   $ € £ ¥ ₹ ₽ ₿ ¢ ¤ ₴ ₱ ₡ ₦ ₨
+
+7. Box drawing characters:
+   ┌─────────────┐
+   │ Unicode Box │
+   ├─────────────┤
+   │ Test Data   │
+   └─────────────┘
+
+8. Problematic surrogate characters:
+   Single surrogate: 
+   Multiple surrogates: 
+   Mixed with text: Text  more text
+
+9. Zero-width characters:
+   Normal: HelloWorld
+   With ZWS: Hello​World (contains zero-width space)
+
+10. Bidirectional text:
+    LTR: English text
+    RTL: نص عربي
+    Mixed: English العربية English
+
+11. Combining diacritics:
+    Precomposed: é (U+00E9)
+    Combining: é (e + U+0301)
+
+12. Control characters:
+    Line feed: Line1
+Line2
+    Carriage return: Line3Line4
+    Tab: Column1	Column2	Column3
+
+13. Special Unicode planes:
+    - Basic Latin: ABC abc 123
+    - Latin-1 Supplement: ÀÁÂ àáâ ñõü
+    - CJK Unified Ideographs: 中文汉字
+    - Emoji: 👨‍👩‍👧‍👦 (family)
+    - Musical Symbols: 𝄞 𝄢 ♩ ♪ ♫ ♬
+
+14. Edge cases:
+    - Empty string: ""
+    - Single space: " "
+    - Multiple spaces: "     "
+    - Mixed whitespace: " 	  
+    "
+    - Very long line: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+15. File paths with Unicode:
+    - /home/user/café/file.txt
+    - C:\Users\用户\Documents\файл.doc
+    - ~/projets/αρχείο.py
+
+This file contains various Unicode scenarios for testing.
+The surrogate characters on line 8 are intentionally problematic to test error handling.

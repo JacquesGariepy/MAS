@@ -27,6 +27,8 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 import traceback
+import unicodedata
+import re
 
 # Configuration du logging complet
 # Créer le dossier logs s'il n'existe pas
@@ -36,12 +38,69 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.FileHandler(LOG_FILE, encoding='utf-8', errors='replace'),
         logging.StreamHandler()
     ]
 )
 
 logger = get_logger(__name__)
+
+def sanitize_unicode(text: str) -> str:
+    """Sanitize Unicode text by removing surrogate characters and normalizing.
+    
+    Args:
+        text: The text to sanitize
+        
+    Returns:
+        Sanitized text safe for UTF-8 encoding
+    """
+    if not isinstance(text, str):
+        return str(text)
+    
+    # Remove surrogate characters (U+D800 to U+DFFF)
+    # These are invalid in UTF-8 and cause encoding errors
+    text = re.sub(r'[\ud800-\udfff]', '', text)
+    
+    # Normalize Unicode to NFC (Canonical Decomposition, followed by Canonical Composition)
+    text = unicodedata.normalize('NFC', text)
+    
+    # Replace any remaining problematic characters with their closest ASCII equivalent
+    # or remove them if no equivalent exists
+    cleaned = []
+    for char in text:
+        try:
+            # Try to encode the character to UTF-8
+            char.encode('utf-8')
+            cleaned.append(char)
+        except UnicodeEncodeError:
+            # Try to get an ASCII representation
+            ascii_repr = unicodedata.normalize('NFKD', char).encode('ascii', 'ignore').decode('ascii')
+            if ascii_repr:
+                cleaned.append(ascii_repr)
+            else:
+                # Skip the character if it can't be represented
+                pass
+    
+    return ''.join(cleaned)
+
+def safe_json_dumps(obj: Any, **kwargs) -> str:
+    """Safely convert object to JSON string with proper encoding.
+    
+    Args:
+        obj: Object to serialize
+        **kwargs: Additional arguments for json.dumps
+        
+    Returns:
+        JSON string with sanitized Unicode
+    """
+    # Ensure ensure_ascii is False to allow Unicode characters
+    kwargs['ensure_ascii'] = False
+    
+    # Convert to JSON
+    json_str = json.dumps(obj, **kwargs)
+    
+    # Sanitize the result
+    return sanitize_unicode(json_str)
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
@@ -95,9 +154,9 @@ Répondre en JSON avec:
     "approach": "description de l'approche recommandée"
 }}"""
         
-        self.llm_logger.info(f"Analyse de requête: {request[:100]}...")
+        self.llm_logger.info(f"Analyse de requête: {sanitize_unicode(request[:100])}...")
         result = await self.generate(prompt, json_response=True)
-        self.llm_logger.info(f"Résultat analyse: {result}")
+        self.llm_logger.info(f"Résultat analyse: {sanitize_unicode(str(result))}")
         return result.get('response', {})
     
     async def decompose_task(self, task: str, analysis: Dict[str, Any]) -> List[str]:
@@ -105,7 +164,7 @@ Répondre en JSON avec:
         prompt = f"""Décomposer cette tâche en sous-tâches concrètes et actionnables.
 
 Tâche: {task}
-Analyse: {json.dumps(analysis, indent=2)}
+Analyse: {safe_json_dumps(analysis, indent=2)}
 
 Créer une liste ordonnée de sous-tâches qui couvrent complètement la tâche principale.
 Chaque sous-tâche doit être:
@@ -167,7 +226,7 @@ Répondre en JSON:
         prompt = f"""Valider cette solution pour la tâche donnée.
 
 Tâche: {task}
-Solution proposée: {json.dumps(solution, indent=2) if isinstance(solution, dict) else str(solution)}
+Solution proposée: {safe_json_dumps(solution, indent=2) if isinstance(solution, dict) else sanitize_unicode(str(solution))}
 
 Évaluer:
 1. Complétude de la solution
@@ -338,7 +397,7 @@ class AutonomousAgent:
             # 1. Analyser la requête
             self.logger.info("Phase 1: Analyse de la requête")
             analysis = await self.llm_service.analyze_request(request)
-            self.logger.info(f"Analyse complétée: {json.dumps(analysis, indent=2)}")
+            self.logger.info(f"Analyse complétée: {safe_json_dumps(analysis, indent=2)}")
             
             # 2. Décomposer en sous-tâches
             main_task.status = TaskStatus.PLANNING
@@ -541,7 +600,7 @@ class AutonomousAgent:
                         file_result = await self.filesystem_tool.execute(
                             action="write",
                             file_path=file_path,
-                            content=file_info['content'],
+                            content=sanitize_unicode(file_info['content']),
                             agent_id=str(self.agent_id)
                         )
                         
@@ -596,78 +655,124 @@ class AutonomousAgent:
             if dep.isdigit():
                 idx = int(dep) - 1
                 if 0 <= idx < len(results):
-                    context_parts.append(f"Résultat tâche {dep}: {json.dumps(results[idx], indent=2)}")
+                    context_parts.append(f"Résultat tâche {dep}: {safe_json_dumps(results[idx], indent=2)}")
         
         return "\n".join(context_parts) if context_parts else "Aucun contexte de dépendance"
     
     async def _generate_report(self, task: Task, result: Dict[str, Any]):
-        """Générer un rapport détaillé"""
+        """Générer un rapport détaillé avec gestion appropriée de l'encodage"""
         report_file = f"/app/logs/rapport_{task.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         
-        report = f"""# Rapport d'Exécution Autonome
+        try:
+            # Sanitize all string values in the result
+            task_desc = sanitize_unicode(task.description)
+            duration = sanitize_unicode(result.get('duration', 'N/A'))
+            success_rate = result.get('success_rate', 0)
+            
+            # Safely extract analysis data
+            analysis = result.get('analysis', {})
+            analysis_type = sanitize_unicode(analysis.get('type', 'N/A'))
+            complexity = sanitize_unicode(analysis.get('complexity', 'N/A'))
+            domains = [sanitize_unicode(d) for d in analysis.get('domains', [])]
+            approach = sanitize_unicode(analysis.get('approach', 'N/A'))
+            
+            report = f"""# Rapport d'Exécution Autonome
 
 ## Requête
-{task.description}
+{task_desc}
 
 ## Métadonnées
 - **ID**: {task.id}
 - **Statut**: {task.status.value}
-- **Durée**: {result['duration']}
-- **Taux de succès**: {result['success_rate']:.1f}%
+- **Durée**: {duration}
+- **Taux de succès**: {success_rate:.1f}%
 
 ## Analyse Initiale
-- **Type**: {result['analysis'].get('type', 'N/A')}
-- **Complexité**: {result['analysis'].get('complexity', 'N/A')}
-- **Domaines**: {', '.join(result['analysis'].get('domains', []))}
-- **Approche**: {result['analysis'].get('approach', 'N/A')}
+- **Type**: {analysis_type}
+- **Complexité**: {complexity}
+- **Domaines**: {', '.join(domains)}
+- **Approche**: {approach}
 
 ## Exécution des Sous-tâches
 
 """
-        
-        for i, (subtask, st_result, validation) in enumerate(zip(task.subtasks, 
-                                                                 result['subtasks_results'], 
-                                                                 result['validations'])):
-            report += f"""### Sous-tâche {i+1}: {subtask.description}
+            
+            for i, (subtask, st_result, validation) in enumerate(zip(task.subtasks, 
+                                                                     result['subtasks_results'], 
+                                                                     result['validations'])):
+                # Sanitize subtask data
+                subtask_desc = sanitize_unicode(subtask.description)
+                agent_name = sanitize_unicode(subtask.assigned_agent['agent'].name) if subtask.assigned_agent else 'N/A'
+                verdict = sanitize_unicode(validation.get('final_verdict', 'N/A'))
+                solution = sanitize_unicode(st_result.get('solution', 'N/A'))
+                
+                report += f"""### Sous-tâche {i+1}: {subtask_desc}
 - **Statut**: {subtask.status.value}
-- **Agent**: {subtask.assigned_agent['agent'].name if subtask.assigned_agent else 'N/A'}
-- **Validation**: {validation.get('final_verdict', 'N/A')} (Score: {validation.get('score', 0)}/100)
+- **Agent**: {agent_name}
+- **Validation**: {verdict} (Score: {validation.get('score', 0)}/100)
 
 **Solution**:
-{st_result.get('solution', 'N/A')}
+{solution}
 
 """
-            
-            if st_result.get('code'):
-                report += f"""**Code généré**:
+                
+                if st_result.get('code'):
+                    code = sanitize_unicode(st_result['code'])
+                    report += f"""**Code généré**:
 ```python
-{st_result['code']}
+{code}
 ```
 
 """
-            
-            if st_result.get('created_files'):
-                report += f"""**Fichiers créés**:
+                
+                if st_result.get('created_files'):
+                    report += f"""**Fichiers créés**:
 """
-                for file in st_result['created_files']:
-                    report += f"- `{file['path']}` ({file['size']} octets)\n"
-                report += "\n"
-            
-            if st_result.get('project_path'):
-                report += f"""**Projet créé dans**: `{st_result['project_path']}`
+                    for file in st_result['created_files']:
+                        file_path = sanitize_unicode(file['path'])
+                        report += f"- `{file_path}` ({file['size']} octets)\n"
+                    report += "\n"
+                
+                if st_result.get('project_path'):
+                    project_path = sanitize_unicode(st_result['project_path'])
+                    report += f"""**Projet créé dans**: `{project_path}`
 
 """
         
-        report += f"""## Résumé
+            report += f"""## Résumé
 - Toutes les sous-tâches ont été exécutées
 - {sum(1 for v in result['validations'] if v.get('is_valid', False))} validations réussies sur {len(result['validations'])}
 - Rapport généré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
         
-        with open(report_file, 'w', encoding='utf-8') as f:
-            f.write(report)
-        
-        self.logger.info(f"Rapport généré: {report_file}")
+            # Final sanitization of the entire report
+            report = sanitize_unicode(report)
+            
+            # Write with error handling
+            with open(report_file, 'w', encoding='utf-8', errors='replace') as f:
+                f.write(report)
+            
+            self.logger.info(f"Rapport généré: {report_file}")
+            
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la génération du rapport: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            
+            # Try to write a minimal error report
+            try:
+                error_report = f"""# Rapport d'Erreur
+
+Une erreur s'est produite lors de la génération du rapport complet.
+
+Erreur: {sanitize_unicode(str(e))}
+
+Veuillez consulter les logs pour plus de détails.
+"""
+                with open(report_file, 'w', encoding='utf-8', errors='ignore') as f:
+                    f.write(error_report)
+                self.logger.info(f"Rapport d'erreur minimal généré: {report_file}")
+            except:
+                self.logger.error("Impossible de générer même un rapport minimal")
     
     async def cleanup(self):
         """Nettoyer les ressources"""

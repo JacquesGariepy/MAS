@@ -6,7 +6,14 @@
       "mcp__claude-flow__memory_usage",
       "Bash(chmod:*)",
       "mcp__claude-flow__swarm_destroy",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "mcp__claude-flow__task_orchestrate",
+      "Bash(npx:*)",
+      "Bash(npx:*)",
+      "Bash(npx:*)",
+      "Bash(find:*)",
+      "Bash(python3:*)",
+      "Bash(python test:*)"
     ],
     "deny": []
   }
