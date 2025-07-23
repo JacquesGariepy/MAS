@@ -118,14 +118,17 @@ class Task:
     status: TaskStatus
     subtasks: List['Task'] = None
     assigned_agent: Any = None
+    metadata: Dict[str, Any] = None
     result: Any = None
     error: str = None
     created_at: float = None
     completed_at: float = None
-    
+
     def __post_init__(self):
         if self.subtasks is None:
             self.subtasks = []
+        if self.metadata is None:
+            self.metadata = {}
         if self.created_at is None:
             self.created_at = time.time()
 
@@ -291,6 +294,7 @@ class AutonomousAgent:
         self.initialized = False  # Flag pour vérifier l'initialisation
         self.current_project_path = None  # Chemin du projet principal
         self.project_structure = None  # Structure du projet à maintenir
+        self.max_depth = 2  # Profondeur maximale de décomposition
         
         # Logger principal
         self.logger = logging.getLogger("AUTONOMOUS_AGENT")
@@ -403,6 +407,37 @@ class AutonomousAgent:
             except Exception as e:
                 self.logger.error(f"Erreur création agent {config['name']}: {str(e)}")
                 self.logger.error(traceback.format_exc())
+
+    async def _recursive_decompose_task(self, task: Task, analysis: Dict[str, Any], depth: int = 1) -> None:
+        """Décomposer récursivement une tâche en sous-tâches"""
+        if depth > self.max_depth:
+            return
+
+        subtasks_data = await self.llm_service.decompose_task(task.description, analysis)
+        if not subtasks_data:
+            return
+
+        for st_data in subtasks_data:
+            subtask = Task(
+                id=st_data.get('id', str(uuid4())),
+                description=st_data.get('description', ''),
+                status=TaskStatus.PENDING,
+                metadata=st_data
+            )
+            task.subtasks.append(subtask)
+
+            sub_analysis = await self.llm_service.analyze_request(subtask.description)
+            await self._recursive_decompose_task(subtask, sub_analysis, depth + 1)
+
+    def _collect_leaf_tasks(self, task: Task) -> List[Task]:
+        """Collecter récursivement toutes les tâches sans sous-tâches"""
+        if not task.subtasks:
+            return [task]
+
+        leaves = []
+        for st in task.subtasks:
+            leaves.extend(self._collect_leaf_tasks(st))
+        return leaves
     
     async def process_request(self, request: str) -> Dict[str, Any]:
         """Traiter une requête de manière complètement autonome"""
@@ -434,25 +469,17 @@ class AutonomousAgent:
             # 2. Décomposer en sous-tâches
             main_task.status = TaskStatus.PLANNING
             self.logger.info("Phase 2: Décomposition en sous-tâches")
-            subtasks_data = await self.llm_service.decompose_task(request, analysis)
-            
-            # Créer les objets Task pour chaque sous-tâche
-            for st_data in subtasks_data:
-                subtask = Task(
-                    id=st_data['id'],
-                    description=st_data['description'],
-                    status=TaskStatus.PENDING
-                )
-                main_task.subtasks.append(subtask)
-            
-            self.logger.info(f"Sous-tâches créées: {len(main_task.subtasks)}")
-            
+            await self._recursive_decompose_task(main_task, analysis, depth=1)
+            leaf_tasks = self._collect_leaf_tasks(main_task)
+
+            self.logger.info(f"Sous-tâches créées: {len(leaf_tasks)}")
+
             # 3. Exécuter les sous-tâches
             main_task.status = TaskStatus.EXECUTING
             self.logger.info("Phase 3: Exécution des sous-tâches")
-            
+
             # Grouper par dépendances et exécuter
-            results = await self._execute_subtasks(main_task.subtasks, subtasks_data)
+            results = await self._execute_subtasks(leaf_tasks)
             
             # 4. Valider les résultats
             main_task.status = TaskStatus.VALIDATING
@@ -461,7 +488,7 @@ class AutonomousAgent:
             validation_results = []
             for i, result in enumerate(results):
                 validation = await self.llm_service.validate_solution(
-                    main_task.subtasks[i].description,
+                    leaf_tasks[i].description,
                     result
                 )
                 validation_results.append(validation)
@@ -477,7 +504,7 @@ class AutonomousAgent:
                 "status": "completed",
                 "duration": f"{duration:.2f} seconds",
                 "analysis": analysis,
-                "subtasks_count": len(main_task.subtasks),
+                "subtasks_count": len(leaf_tasks),
                 "subtasks_results": results,
                 "validations": validation_results,
                 "success_rate": (sum(1 for v in validation_results if v.get('is_valid', False)) / len(validation_results) * 100) if validation_results else 0
@@ -509,7 +536,7 @@ class AutonomousAgent:
                 "traceback": traceback.format_exc()
             }
     
-    async def _execute_subtasks(self, subtasks: List[Task], subtasks_data: List[Dict]) -> List[Any]:
+    async def _execute_subtasks(self, subtasks: List[Task]) -> List[Any]:
         """Exécuter les sous-tâches en parallèle ou séquentiellement selon les dépendances"""
         results = []
         completed = set()
@@ -522,11 +549,11 @@ class AutonomousAgent:
         while len(completed) < len(subtasks):
             # Trouver les tâches exécutables (sans dépendances non satisfaites)
             executable = []
-            for i, (task, data) in enumerate(zip(subtasks, subtasks_data)):
+            for i, task in enumerate(subtasks):
                 if i not in completed:
-                    deps = data.get('dependencies', [])
-                    if all(int(d) - 1 in completed for d in deps if d.isdigit()):
-                        executable.append((i, task, data))
+                    deps = task.metadata.get('dependencies', [])
+                    if all(int(d) - 1 in completed for d in deps if isinstance(d, str) and d.isdigit()):
+                        executable.append((i, task))
             
             if not executable:
                 self.logger.error("Deadlock détecté dans les dépendances!")
@@ -534,9 +561,9 @@ class AutonomousAgent:
             
             # Exécuter les tâches en parallèle
             batch_tasks = []
-            for idx, task, data in executable:
+            for idx, task in executable:
                 # Assigner à l'agent approprié
-                agent_info = self._find_suitable_agent(data.get('type', 'general'))
+                agent_info = self._find_suitable_agent(task.metadata.get('type', 'general'))
                 if not agent_info:
                     self.logger.error(f"Aucun agent trouvé pour la tâche {task.description}")
                     task.status = TaskStatus.FAILED
@@ -549,10 +576,10 @@ class AutonomousAgent:
                 task.status = TaskStatus.EXECUTING
                 
                 # Créer le contexte avec les résultats des dépendances
-                context = self._build_context(data.get('dependencies', []), results)
-                
+                context = self._build_context(task.metadata.get('dependencies', []), results)
+
                 # Exécuter
-                batch_tasks.append(self._execute_single_task(task, data, agent_info, context))
+                batch_tasks.append(self._execute_single_task(task, agent_info, context))
             
             # Attendre la complétion du batch
             if batch_tasks:
@@ -560,10 +587,10 @@ class AutonomousAgent:
                 
                 # Traiter les résultats
                 j = 0
-                for (idx, task, data) in executable:
+                for (idx, task) in executable:
                     if task.status == TaskStatus.FAILED:
                         continue
-                        
+
                     result = batch_results[j]
                     j += 1
                     
@@ -579,7 +606,7 @@ class AutonomousAgent:
                         self.logger.info(f"Sous-tâche {idx+1} complétée")
                     
                     completed.add(idx)
-        
+
         return results
     
     async def _initialize_project_structure(self, main_task: Task):
@@ -710,7 +737,7 @@ class AutonomousAgent:
             # Par défaut, à la racine du projet
             return os.path.basename(file_path)
     
-    async def _execute_single_task(self, task: Task, data: Dict, agent: Any, context: str) -> Dict[str, Any]:
+    async def _execute_single_task(self, task: Task, agent: Any, context: str) -> Dict[str, Any]:
         """Exécuter une seule sous-tâche avec un agent"""
         self.logger.info(f"Exécution de: {task.description}")
         self.logger.info(f"Agent assigné: {agent['agent'].name}")
@@ -718,7 +745,7 @@ class AutonomousAgent:
         # Mettre à jour les croyances de l'agent
         await agent['agent'].update_beliefs({
             "current_task": task.description,
-            "task_type": data.get('type', 'general'),
+            "task_type": task.metadata.get('type', 'general'),
             "context": context,
             "project_structure_rules": {
                 "message": "RESPECTER LA STRUCTURE DU PROJET",
@@ -734,7 +761,7 @@ class AutonomousAgent:
             # Créer le format attendu par solve_subtask
             subtask_data = {
                 'description': task.description,
-                'type': data.get('type', 'general')
+                'type': task.metadata.get('type', 'general')
             }
             result = await self.llm_service.solve_subtask(subtask_data, context)
         else:
@@ -893,8 +920,9 @@ class AutonomousAgent:
 
 """
             
-            for i, (subtask, st_result, validation) in enumerate(zip(task.subtasks, 
-                                                                     result['subtasks_results'], 
+            leaf_tasks = self._collect_leaf_tasks(task)
+            for i, (subtask, st_result, validation) in enumerate(zip(leaf_tasks,
+                                                                     result['subtasks_results'],
                                                                      result['validations'])):
                 # Sanitize subtask data
                 subtask_desc = sanitize_unicode(subtask.description)
