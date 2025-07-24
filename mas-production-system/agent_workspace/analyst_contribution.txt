@@ -1,1 +1,0 @@
-Analyzed requirements: JWT-based auth with refresh tokens
