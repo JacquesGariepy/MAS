@@ -31,6 +31,10 @@ class AgentContext:
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)
     working_memory: List[Any] = field(default_factory=list)
     current_task: Optional[Any] = None
+    # Software environment integration
+    software_location: Optional[Any] = None  # Will be SoftwareLocation
+    resource_allocation: Dict[str, float] = field(default_factory=dict)
+    visibility_level: Optional[str] = None  # Will be VisibilityLevel
 
 class BaseAgent(ABC):
     """Base class for all agents"""
@@ -50,6 +54,7 @@ class BaseAgent(ABC):
         self.role = role
         self.capabilities = capabilities
         self.llm_service = llm_service
+        self.agent_type = kwargs.get('agent_type', 'base')  # For environment integration
         
         # BDI model
         self.bdi = BDI(

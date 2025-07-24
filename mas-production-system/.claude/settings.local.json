@@ -14,7 +14,12 @@
       "Bash(find:*)",
       "Bash(python3:*)",
       "Bash(python test:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python -m pytest tests/test_software_environment.py -v)",
+      "Bash(docker-compose:*)",
+      "Bash(docker cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": []
   }
