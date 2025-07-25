@@ -7,9 +7,9 @@ import json
 from typing import Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
-from src.database.models import Message, Agent
+from src.database.models import Message
 from src.core.agents import get_agent_runtime
 from src.utils.logger import get_logger
 from src.cache import get as cache_get

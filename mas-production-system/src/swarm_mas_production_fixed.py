@@ -9,7 +9,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Set, Tuple
+from typing import Dict, List, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 import logging
@@ -18,10 +18,7 @@ import psutil
 from enum import Enum
 from dataclasses import dataclass, field
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-import multiprocessing
-import threading
 import signal
-import pickle
 from datetime import timedelta
 
 # Add parent directory to path
@@ -44,7 +41,6 @@ from src.core.agents import CognitiveAgent, ReflexiveAgent, HybridAgent
 # Import environment
 from src.core.environment import (
     SoftwareEnvironment,
-    SoftwareLocation,
     TopologyType,
     VisibilityLevel,
     EnvironmentAdapter
@@ -861,7 +857,7 @@ class ProductionSwarmCoordinator:
         # Analyze agent performance
         for agent_id, metrics in self.agent_metrics.items():
             if metrics['tasks_completed'] > 10:
-                avg_time = metrics['avg_task_time']
+                metrics['avg_task_time']
                 success_rate = 1 - (metrics['tasks_failed'] / metrics['tasks_completed'])
                 
                 # Adjust agent capabilities based on performance
@@ -1186,7 +1182,6 @@ def signal_handler(sig, frame):
 async def emergency_shutdown():
     """Emergency shutdown all swarms"""
     # TODO: Track all active swarms and shut them down
-    pass
 
 
 # Main entry point

@@ -2,11 +2,11 @@
 Agent API endpoints with full CRUD operations
 """
 
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 

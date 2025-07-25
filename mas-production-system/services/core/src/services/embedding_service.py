@@ -6,11 +6,10 @@ from typing import List, Tuple, Optional, Dict, Any
 import faiss
 import pickle
 from pathlib import Path
-import asyncio
 
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
-from src.cache import cache, set as cache_set, get as cache_get
+from src.cache import set as cache_set, get as cache_get
 
 logger = get_logger(__name__)
 

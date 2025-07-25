@@ -2,21 +2,16 @@
 Agent service with complete lifecycle management
 """
 
-import asyncio
 from typing import List, Dict, Any, Optional
 from uuid import UUID, uuid4
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 
-from sqlalchemy.orm import Session
 
 from src.database.models import Agent, Memory, Message, Task
 from src.schemas.agents import AgentCreate, AgentUpdate, MemoryCreate
 from src.core.agents import AgentFactory, get_agent_runtime
 from src.services.llm_service import LLMService
-from src.services.embedding_service import EmbeddingService
 from src.utils.logger import get_logger
-from src.config import settings
 from src.cache import cache
 from src.message_broker import publish_event
 

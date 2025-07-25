@@ -4,18 +4,15 @@ Extends the existing autonomous agent with Ferber's MAS principles
 """
 
 import asyncio
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
-import logging
 from pathlib import Path
 
 from src.agents.base_agent import BaseAgent
 from src.agents.cognitive_agent import CognitiveAgent
 from src.agents.reflexive_agent import ReflexiveAgent
 from src.agents.hybrid_agent import HybridAgent
-from src.services.llm_service import LLMService
-from src.services.tool_service import ToolService
 from src.tools import FileSystemTool
 from src.utils.logger import get_logger
 
@@ -23,7 +20,6 @@ from src.utils.logger import get_logger
 try:
     from src.core.environment import (
         SoftwareEnvironment,
-        SoftwareLocation,
         TopologyType,
         VisibilityLevel,
         EnvironmentAdapter
@@ -284,7 +280,7 @@ class AutonomousIntegratedAgent(BaseAgent):
             agent.agent_type = config['agent_type']
             
             # Start agent
-            agent_task = asyncio.create_task(agent.run())
+            asyncio.create_task(agent.run())
             
             # Register with environment
             if self.enable_environment and self.env_adapter:

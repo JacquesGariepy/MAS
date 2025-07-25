@@ -8,11 +8,9 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
 from uuid import uuid4
-from datetime import datetime
 import logging
-import json
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -34,7 +32,6 @@ from src.core.agents import CognitiveAgent, ReflexiveAgent, HybridAgent
 # Import environment
 from src.core.environment import (
     SoftwareEnvironment,
-    SoftwareLocation,
     TopologyType,
     VisibilityLevel,
     EnvironmentAdapter

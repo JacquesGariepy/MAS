@@ -7,8 +7,6 @@ from uuid import UUID
 import asyncio
 
 from src.core.agents.base_agent import BaseAgent
-from src.core.agents.cognitive_agent import CognitiveAgent
-from src.core.agents.reflexive_agent import ReflexiveAgent
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)

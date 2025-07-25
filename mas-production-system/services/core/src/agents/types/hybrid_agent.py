@@ -4,7 +4,7 @@ Hybrid agent combining reflexive and cognitive capabilities
 
 import json
 import asyncio
-from typing import Dict, List, Any, Optional, Callable, Tuple
+from typing import Dict, List, Any, Optional
 from uuid import UUID
 from datetime import datetime
 from enum import Enum
@@ -589,7 +589,7 @@ Provide analysis including:
 4. Estimated complexity (1-10)
 """
         
-        response = await self.llm_service.generate(prompt)
+        await self.llm_service.generate(prompt)
         
         # Parse response (simplified)
         return {
@@ -609,7 +609,7 @@ Analysis: {json.dumps(analysis, indent=2)}
 Provide a structured plan with specific actions.
 """
         
-        response = await self.llm_service.generate(prompt)
+        await self.llm_service.generate(prompt)
         
         # Parse response into plan structure
         return {
@@ -630,7 +630,7 @@ Available tools: {list(self.tools.keys())}
 Provide a structured action specification.
 """
         
-        response = await self.llm_service.generate(prompt)
+        await self.llm_service.generate(prompt)
         
         # Parse response into action
         return {

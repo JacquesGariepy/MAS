@@ -1,28 +1,52 @@
-# Agent Workspace
+# Sample Library
 
-Ce répertoire est l'espace de travail partagé entre l'hôte et les agents Docker.
+A demonstration Python library created by the MAS unified swarm.
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+```python
+from sample_lib import SampleClass, helper_function
+
+# Create an instance
+sample = SampleClass("MyData")
+
+# Add some data
+sample.add_data("item1")
+sample.add_data("item2")
+
+# Process the data
+result = sample.process_data()
+print(result)
+
+# Use utility function
+processed = helper_function("hello world")
+print(processed)  # Output: Processed: HELLO WORLD
+```
 
 ## Structure
 
 ```
-agent_workspace/
-├── projects/       # Projets créés par les agents
-│   └── [agent-id]/[project-name]/
-├── shared/         # Ressources partagées entre agents
-├── templates/      # Templates de code réutilisables
-└── outputs/        # Fichiers de sortie et rapports
+sample_lib/
+├── __init__.py       # Package initialization
+├── core.py          # Core functionality
+└── utils.py         # Utility functions
+
+tests/
+├── __init__.py
+└── test_sample_lib.py
 ```
 
-## Utilisation
+## Testing
 
-Les agents peuvent :
-- Créer leurs propres répertoires dans `projects/`
-- Partager des ressources dans `shared/`
-- Utiliser les templates dans `templates/`
-- Générer des rapports dans `outputs/`
+```bash
+python -m unittest discover tests
+```
 
-## Permissions
-
-- Tous les fichiers créés ici sont accessibles depuis l'hôte
-- Les agents ont les permissions complètes dans ce répertoire
-- Les modifications sont persistantes
+---
+Created by MAS Unified Swarm on 2025-07-25 17:16:52

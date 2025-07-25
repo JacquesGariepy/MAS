@@ -4,6 +4,7 @@ Base agent implementation with complete BDI architecture
 
 import asyncio
 from abc import ABC, abstractmethod
+import json
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 from datetime import datetime
@@ -12,7 +13,6 @@ from dataclasses import dataclass, field
 from src.services.llm_service import LLMService
 from src.services.tool_service import ToolService
 from src.utils.logger import get_logger
-from src.config import settings
 
 logger = get_logger(__name__)
 
@@ -95,20 +95,28 @@ class BaseAgent(ABC):
     @abstractmethod
     async def perceive(self, environment: Dict[str, Any]) -> Dict[str, Any]:
         """Perceive environment and extract relevant information"""
-        pass
     
     @abstractmethod
     async def deliberate(self) -> List[str]:
         """Deliberate and form intentions based on beliefs and desires"""
-        pass
     
     @abstractmethod
     async def act(self) -> List[Dict[str, Any]]:
         """Execute actions based on intentions"""
-        pass
     
     async def update_beliefs(self, new_beliefs: Dict[str, Any]):
         """Update agent's beliefs"""
+        # Ensure new_beliefs is a dict
+        if isinstance(new_beliefs, str):
+            try:
+                new_beliefs = json.loads(new_beliefs)
+            except json.JSONDecodeError:
+                new_beliefs = {"belief_update": new_beliefs}
+                logger.warning(f"Received string for beliefs, wrapped in dict")
+        elif not isinstance(new_beliefs, dict):
+            logger.error(f"Invalid beliefs type: {type(new_beliefs)}")
+            return
+        
         self.bdi.beliefs.update(new_beliefs)
         logger.debug(f"Agent {self.name} updated beliefs: {new_beliefs}")
     
@@ -196,6 +204,23 @@ class BaseAgent(ABC):
             # Act
             if self.bdi.intentions:
                 actions = await self.act()
+                
+                # Ensure actions is a list
+                if actions is None:
+                    actions = []
+                elif isinstance(actions, str):
+                    try:
+                        actions = json.loads(actions)
+                        if not isinstance(actions, list):
+                            actions = [actions]
+                    except:
+                        actions = [{"type": "execute", "description": actions}]
+                elif isinstance(actions, dict):
+                    actions = [actions]
+                elif not isinstance(actions, list):
+                    logger.warning(f"Invalid actions type: {type(actions)}")
+                    actions = []
+                
                 for action in actions:
                     await self._execute_action(action)
             
@@ -207,6 +232,14 @@ class BaseAgent(ABC):
     
     async def _execute_action(self, action: Dict[str, Any]):
         """Execute a single action"""
+        # Ensure action is a dict
+        if isinstance(action, str):
+            action = {"type": "execute", "description": action}
+            logger.warning(f"Received string instead of dict for action, wrapped in dict")
+        elif not isinstance(action, dict):
+            logger.error(f"Invalid action type: {type(action)}")
+            return
+        
         action_type = action.get("type")
         
         if action_type == "tool_call":
@@ -248,7 +281,6 @@ class BaseAgent(ABC):
     async def _send_message(self, action: Dict[str, Any]):
         """Send a message to another agent"""
         # Implementation depends on messaging system
-        pass
     
     async def _process_messages(self):
         """Process incoming messages"""
@@ -280,12 +312,10 @@ class BaseAgent(ABC):
     @abstractmethod
     async def handle_message(self, message: Any):
         """Handle incoming message"""
-        pass
     
     @abstractmethod
     async def handle_task(self, task: Any):
         """Handle assigned task"""
-        pass
     
     async def receive_message(self, message: Any):
         """Receive a message (called by environment)"""
@@ -324,7 +354,6 @@ class BaseAgent(ABC):
     
     async def _handle_config_update(self, config: Dict[str, Any]):
         """Handle configuration updates (override in subclasses)"""
-        pass
     
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.name} ({self.role})>"

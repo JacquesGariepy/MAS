@@ -2,13 +2,11 @@
 SQLAlchemy models with proper indexing and constraints
 """
 
-from datetime import datetime
-from typing import Optional, List, Dict, Any
 from uuid import uuid4
 
 from sqlalchemy import (
-    Column, String, Integer, Float, Boolean, DateTime, JSON, Text,
-    ForeignKey, Table, Index, CheckConstraint, UniqueConstraint
+    Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey,
+    Table, Index, CheckConstraint, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.ext.declarative import declarative_base

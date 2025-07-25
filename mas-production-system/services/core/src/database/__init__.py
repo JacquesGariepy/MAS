@@ -3,7 +3,7 @@ Database module initialization
 """
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 from src.config import settings
@@ -12,7 +12,6 @@ from src.config import settings
 Base = declarative_base()
 
 # Import all models to ensure they are registered
-from src.database.models import *
 
 # Sync engine for Alembic migrations
 sync_engine = create_engine(

@@ -14,7 +14,6 @@ from enum import Enum
 import numpy as np
 from collections import defaultdict
 import networkx as nx
-import json
 import logging
 
 logger = logging.getLogger(__name__)

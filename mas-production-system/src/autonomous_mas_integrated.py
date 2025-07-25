@@ -8,8 +8,8 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
-from uuid import UUID, uuid4
+from typing import Dict, List, Any, Optional
+from uuid import uuid4
 from datetime import datetime
 import logging
 from dataclasses import dataclass, field
@@ -21,11 +21,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import environment components
 from src.core.environment import (
     SoftwareEnvironment,
-    SoftwareLocation,
     TopologyType,
     VisibilityLevel,
-    EnvironmentAdapter,
-    integrate_mas_with_environment
+    EnvironmentAdapter
 )
 
 # Import runtime
@@ -36,7 +34,6 @@ sys.path.insert(0, os.path.join(str(Path(__file__).parent.parent), 'services', '
 
 from src.services.llm_service import LLMService
 from src.services.tool_service import ToolService
-from src.tools.filesystem_tool import FileSystemTool
 from src.core.agents import CognitiveAgent, ReflexiveAgent, HybridAgent
 from src.utils.logger import get_logger
 
@@ -424,7 +421,7 @@ class IntegratedAutonomousAgent:
         """
         
         # Use LLM for analysis
-        response = await self.llm_service.generate(enhanced_prompt)
+        await self.llm_service.generate(enhanced_prompt)
         
         # Parse and enhance with environment data
         analysis = {
@@ -586,7 +583,7 @@ class IntegratedAutonomousAgent:
         
     async def _validate_with_constraints(self, artifacts: List[str]) -> Dict[str, Any]:
         """Validate results considering system constraints"""
-        validator = self.agent_roles['validator']
+        self.agent_roles['validator']
         
         validation = {
             'valid': True,

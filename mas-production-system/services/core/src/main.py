@@ -6,7 +6,6 @@ Production-ready implementation
 import asyncio
 import signal
 import sys
-from typing import Optional
 import uvloop
 
 from fastapi import FastAPI
@@ -139,6 +138,7 @@ async def shutdown_event():
 
 def handle_signal(sig, frame):
     """Handle system signals gracefully"""
+    _ = frame  # Required by signal handler interface but unused
     logger.info(f"Received signal {sig}")
     sys.exit(0)
 

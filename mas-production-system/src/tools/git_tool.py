@@ -4,12 +4,9 @@ Provides Git operations and repository management
 """
 
 import subprocess
-import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
 import logging
-import os
 
 from .base_tool import BaseTool, ToolResult
 

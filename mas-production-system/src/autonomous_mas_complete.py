@@ -21,16 +21,14 @@ import os
 import sys
 import json
 import psutil
-import time
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Set
-from uuid import UUID, uuid4
+from typing import Dict, List, Any, Optional
+from uuid import uuid4
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
 from collections import defaultdict, deque
-import math
 import random
 
 # Add parent directory to path
@@ -44,27 +42,24 @@ from src.tools.filesystem_tool import FileSystemTool
 from src.tools.code_tool import CodeTool
 from src.tools.git_tool import GitTool
 from src.tools.web_search_tool import WebSearchTool
-from src.tools.database_tool import DatabaseTool
 from src.tools.http_tool import HTTPTool
 
 # Import agents
-from src.core.agents.base_agent import BaseAgent, BDI, AgentContext
+from src.core.agents.base_agent import BaseAgent
 from src.core.agents.cognitive_agent import CognitiveAgent
 from src.core.agents.reflexive_agent import ReflexiveAgent  
 from src.core.agents.hybrid_agent import HybridAgent
 
 # Import runtime
-from src.core.runtime.agent_runtime import AgentRuntime, get_agent_runtime
+from src.core.runtime.agent_runtime import get_agent_runtime
 
 # Import environment
 from src.core.environment import (
     SoftwareEnvironment,
-    SoftwareLocation,
     TopologyType,
     VisibilityLevel,
     EnvironmentAdapter,
     SystemConstraint,
-    EnvironmentEvent,
     EnvironmentRule
 )
 
@@ -845,7 +840,7 @@ class CompleteAutonomousMAS:
                 await asyncio.sleep(30)  # Check every 30 seconds
                 
                 # Analyze communication patterns
-                communication_graph = defaultdict(int)
+                defaultdict(int)
                 
                 # Build communication frequency graph
                 # (Simplified - would track actual communications)
@@ -1001,7 +996,7 @@ class CompleteAutonomousMAS:
                 
                 # Collect agent metrics
                 for agent in self.agents.values():
-                    agent_metrics = await agent.get_metrics()
+                    await agent.get_metrics()
                     # Store/process metrics
                     
                 # Collect environment metrics

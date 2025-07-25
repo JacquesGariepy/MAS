@@ -7,14 +7,11 @@ Complete implementation with all features, no simplifications
 import asyncio
 import os
 import sys
-import json
-import psutil
 import signal
-import traceback
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Set, Tuple, Callable
-from uuid import UUID, uuid4
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Set, Callable
+from uuid import uuid4
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
@@ -23,11 +20,8 @@ import pickle
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import multiprocessing as mp
 from collections import defaultdict, deque
-import hashlib
-import inspect
 import networkx as nx
 import numpy as np
-from abc import ABC, abstractmethod
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,22 +40,18 @@ from src.tools.database_tool import DatabaseTool
 from src.tools.http_tool import HTTPTool
 
 # Import agents
-from src.core.agents.base_agent import BaseAgent, BDI, AgentContext
+from src.core.agents.base_agent import BaseAgent
 from src.core.agents.cognitive_agent import CognitiveAgent
 from src.core.agents.reflexive_agent import ReflexiveAgent
 from src.core.agents.hybrid_agent import HybridAgent
 
 # Import runtime and environment
-from src.core.runtime.agent_runtime import AgentRuntime, get_agent_runtime
+from src.core.runtime.agent_runtime import get_agent_runtime
 from src.core.environment import (
     SoftwareEnvironment,
-    SoftwareLocation,
     TopologyType,
     VisibilityLevel,
-    EnvironmentAdapter,
-    SystemConstraint,
-    EnvironmentEvent,
-    EnvironmentRule
+    EnvironmentAdapter
 )
 
 from src.utils.logger import get_logger
@@ -707,7 +697,7 @@ class SwarmCoordinator:
         
     def _calculate_agent_fitness(self, agent_id: str, task: SwarmTask) -> float:
         """Calculate agent fitness for task"""
-        agent = self.agents[agent_id]
+        self.agents[agent_id]
         
         # Capability match (40%)
         cap_match = len(set(task.requirements) & self.agent_capabilities[agent_id])

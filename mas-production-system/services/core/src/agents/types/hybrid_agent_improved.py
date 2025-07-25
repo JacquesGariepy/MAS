@@ -2,18 +2,12 @@
 Agent hybride amélioré avec meilleure gestion des prompts et du contexte
 """
 
-import asyncio
-import json
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from datetime import datetime
-from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from ...database.models import Agent, Task, Message
-from ...schemas.agents import AgentUpdate
-from ...schemas.messages import MessageCreate
+from ...database.models import Agent, Task
 from ...schemas.tasks import TaskStatus
 from ...services.llm_service_improved import ImprovedLLMService
 from ..base_agent import BaseAgent

@@ -6,7 +6,7 @@ Provides HTTP request capabilities and API interactions
 import aiohttp
 import asyncio
 import json
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import logging
 from pathlib import Path

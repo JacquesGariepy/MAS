@@ -2,14 +2,13 @@
 Agent API endpoints with async SQLAlchemy
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from uuid import UUID, uuid4
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_, select, func
-from sqlalchemy.orm import selectinload
 
 from src.database import get_db
 from src.database.models import Agent, User, Organization, Message

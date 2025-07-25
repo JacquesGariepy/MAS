@@ -5,7 +5,7 @@ Service LLM amélioré avec meilleure gestion des timeouts et des erreurs
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from openai import AsyncOpenAI
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential

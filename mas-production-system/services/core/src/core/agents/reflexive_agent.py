@@ -4,7 +4,6 @@ Reflexive Agent implementation - rule-based reactive behavior
 
 from typing import Dict, List, Any, Optional
 from uuid import UUID
-import asyncio
 
 from src.core.agents.base_agent import BaseAgent
 from src.utils.logger import get_logger
@@ -180,7 +179,6 @@ class ReflexiveAgent(BaseAgent):
     async def learn(self, feedback: Dict[str, Any]):
         """Reflexive agents don't learn - they only follow rules"""
         logger.debug(f"Reflexive agent {self.name} received feedback but doesn't learn")
-        pass
     
     async def deliberate(self) -> List[str]:
         """Reflexive agents don't deliberate - they react immediately"""

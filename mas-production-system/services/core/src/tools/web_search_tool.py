@@ -5,9 +5,7 @@ Provides web search and content retrieval capabilities
 
 import aiohttp
 import asyncio
-import json
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List
 import logging
 from urllib.parse import quote_plus, urlparse
 import re

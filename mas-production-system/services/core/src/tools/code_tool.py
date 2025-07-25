@@ -4,13 +4,10 @@ Provides code analysis, generation, and manipulation capabilities
 """
 
 import ast
-import json
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List
 from dataclasses import dataclass
-import subprocess
-import tempfile
 import logging
 
 from .base_tool import BaseTool, ToolResult
@@ -528,7 +525,7 @@ class CodeTool(BaseTool):
         """Lint code to find issues"""
         code = params.get("code", "")
         language = params.get("language", "python")
-        file_path = params.get("file_path")
+        params.get("file_path")
         
         issues = []
         

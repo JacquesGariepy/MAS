@@ -2,7 +2,7 @@
 Security utilities
 """
 from datetime import datetime, timedelta
-from typing import Any, Union, Optional
+from typing import Optional
 
 from jose import jwt
 from passlib.context import CryptContext

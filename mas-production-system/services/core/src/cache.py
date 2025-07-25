@@ -2,7 +2,7 @@
 Cache module with async Redis support
 """
 import redis.asyncio as aioredis
-from typing import Optional, Any, Union
+from typing import Optional, Union
 import json
 
 from src.config import settings

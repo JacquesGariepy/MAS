@@ -5,16 +5,14 @@ Version améliorée de CognitiveAgent avec des prompts structurés et sécurisé
 import json
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database.models import Agent, Task, Message
 from ...schemas.messages import MessageCreate, MessageType
-from ...schemas.tasks import TaskStatus
 from ...services.llm_service_improved import ImprovedLLMService
-from ..templates import build_agent_prompt, get_task_prompt
+from ..templates import build_agent_prompt
 from .base_agent import BaseAgent
 
 logger = logging.getLogger(__name__)

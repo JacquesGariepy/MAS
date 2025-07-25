@@ -1,9 +1,8 @@
 """
 Tool Service for managing and executing agent tools
 """
-import importlib
 import inspect
-from typing import Dict, Any, Callable, List, Optional, Type
+from typing import Dict, Any, Callable, List, Optional
 import asyncio
 from uuid import UUID
 

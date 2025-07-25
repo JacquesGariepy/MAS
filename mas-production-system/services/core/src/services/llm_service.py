@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from openai import AsyncOpenAI
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -187,7 +187,7 @@ The JSON object MUST start with {{ and end with }}. Do not include any text afte
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens or self.max_tokens,
+                "max_tokens": max_tokens or max(self.max_tokens, 1000),  # Increased to prevent truncation
                 "timeout": timeout
             }
             
@@ -297,6 +297,27 @@ The JSON object MUST start with {{ and end with }}. Do not include any text afte
         
         # Supprime les espaces en début/fin
         text = text.strip()
+        
+        # Check for truncation indicators
+        if text.endswith('...') or text.endswith('..."') or '"..."' in text:
+            logger.warning("JSON response appears truncated")
+            # Try to close open structures
+            # Count open/close braces and brackets
+            open_braces = text.count('{')
+            close_braces = text.count('}')
+            open_brackets = text.count('[')
+            close_brackets = text.count(']')
+            
+            # Remove the truncation indicator
+            text = re.sub(r'[,\s]*"?\.\.\."?[,\s]*$', '', text)
+            
+            # Add missing closing characters
+            while close_braces < open_braces:
+                text += '}'
+                close_braces += 1
+            while close_brackets < open_brackets:
+                text += ']'
+                close_brackets += 1
         
         # First, remove any system-reminder tags that might be present
         text = re.sub(r'<system-reminder>.*?</system-reminder>', '', text, flags=re.DOTALL)
@@ -425,7 +446,6 @@ The JSON object MUST start with {{ and end with }}. Do not include any text afte
                 "content": "Response extracted from reasoning",
                 "reasoning_detected": True
             }
-            
         except Exception as e:
             logger.error(f"Failed to extract reasoning content: {e}")
             return None

@@ -3,7 +3,7 @@ Message broker module with async Redis pub/sub support
 """
 import redis.asyncio as aioredis
 import json
-from typing import Dict, Any, Callable, Optional
+from typing import Dict, Any, Callable
 import asyncio
 
 from src.config import settings

@@ -6,12 +6,11 @@ Works without requiring the full agent infrastructure
 import asyncio
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
-from uuid import UUID
 import logging
 
 from .software_environment import (
     SoftwareEnvironment, SoftwareLocation, TopologyType, 
-    VisibilityLevel, EnvironmentEvent
+    VisibilityLevel
 )
 
 logger = logging.getLogger(__name__)

@@ -2,8 +2,7 @@
 Reflexive agent with stimulus-response behavior
 """
 
-import json
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional
 from uuid import UUID
 from datetime import datetime
 

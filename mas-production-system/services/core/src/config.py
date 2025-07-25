@@ -2,11 +2,11 @@
 Configuration management with environment validation
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings
-from pydantic import validator, field_validator
+from pydantic import field_validator
 from pydantic.networks import PostgresDsn, RedisDsn, HttpUrl, AnyHttpUrl
 
 class Settings(BaseSettings):

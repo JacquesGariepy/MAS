@@ -3,16 +3,14 @@ Database Tool for MAS Agents
 Provides database operations and query capabilities
 """
 
-import asyncio
 import json
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any
 from datetime import datetime
 import logging
 from pathlib import Path
 import sqlite3
 import asyncpg
 import pymongo
-from contextlib import asynccontextmanager
 
 from .base_tool import BaseTool, ToolResult
 
@@ -76,7 +74,7 @@ class DatabaseTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         """Execute database tool action"""
         action = kwargs.get("action")
-        db_type = kwargs.get("db_type")
+        kwargs.get("db_type")
         
         try:
             if action == "connect":

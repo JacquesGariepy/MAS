@@ -3,14 +3,11 @@ Standalone Software Environment for MAS (no external dependencies)
 This version works without psutil, networkx, or numpy
 """
 
-import asyncio
-import os
 import time
 from typing import Dict, List, Tuple, Optional, Any, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict, deque
-import json
 import logging
 import random
 import math
