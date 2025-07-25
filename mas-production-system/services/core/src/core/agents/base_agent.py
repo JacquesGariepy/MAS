@@ -1,14 +1,23 @@
+#!/usr/bin/env python3
 """
-Base agent implementation with complete BDI architecture
+BaseAgent – BDI v2
+──────────────────
+• Garantit que `beliefs` est toujours un dict (même si chaîne ou None au départ)
+• Convertit/encapsule automatiquement les mises à jour reçues
+• Ajoute _ensure_dict() pour éviter l’erreur "'str' object has no attribute 'items'"
+• Journalise les conversions / erreurs de type
+Copy‑paste complet, sans placeholder.
 """
 
+from __future__ import annotations
+
 import asyncio
-from abc import ABC, abstractmethod
 import json
-from typing import Dict, List, Any, Optional
-from uuid import UUID
-from datetime import datetime
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from src.services.llm_service import LLMService
 from src.services.tool_service import ToolService
@@ -16,29 +25,66 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────────────────────────
+def _ensure_dict(value: Any, *, context: str = "") -> Dict[str, Any]:
+    """
+    Convertit value en dict si possible; encapsule sinon.
+    ‑ value = '{"a":1}'     → {'a': 1}
+    ‑ value = 'text'        → {'value': 'text'}
+    ‑ value = None          → {}
+    ‑ value est déjà dict   → inchangé
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"value": parsed}
+        except json.JSONDecodeError:
+            logger.warning("String not JSON (%s): wrapped into dict", context)
+            return {"value": value}
+    logger.warning("Unexpected type %s for %s – wrapped", type(value), context)
+    return {"value": value}
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Dataclasses
+# ────────────────────────────────────────────────────────────────────────────────
 @dataclass
 class BDI:
-    """Beliefs-Desires-Intentions model"""
+    """Beliefs‑Desires‑Intentions"""
     beliefs: Dict[str, Any] = field(default_factory=dict)
     desires: List[str] = field(default_factory=list)
     intentions: List[str] = field(default_factory=list)
 
+
 @dataclass
 class AgentContext:
-    """Agent execution context"""
+    """Execution context"""
     agent_id: UUID
     environment: Dict[str, Any] = field(default_factory=dict)
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)
     working_memory: List[Any] = field(default_factory=list)
     current_task: Optional[Any] = None
-    # Software environment integration
-    software_location: Optional[Any] = None  # Will be SoftwareLocation
+    software_location: Optional[Any] = None  # e.g. SoftwareLocation
     resource_allocation: Dict[str, float] = field(default_factory=dict)
-    visibility_level: Optional[str] = None  # Will be VisibilityLevel
+    visibility_level: Optional[str] = None   # e.g. VisibilityLevel
 
+
+# ────────────────────────────────────────────────────────────────────────────────
+# BaseAgent
+# ────────────────────────────────────────────────────────────────────────────────
 class BaseAgent(ABC):
-    """Base class for all agents"""
-    
+    """Base class for all agents with robust BDI handling"""
+
+    # ---------------------------------------------------------------- init
     def __init__(
         self,
         agent_id: UUID,
@@ -46,314 +92,279 @@ class BaseAgent(ABC):
         role: str,
         capabilities: List[str],
         llm_service: Optional[LLMService] = None,
-        **kwargs
+        **kwargs,
     ):
-        self.agent_id = agent_id  # Add agent_id attribute
-        self.id = agent_id  # Keep for compatibility
+        self.agent_id = agent_id      # Unique identifier
+        self.id = agent_id            # Legacy compatibility
         self.name = name
         self.role = role
         self.capabilities = capabilities
         self.llm_service = llm_service
-        self.agent_type = kwargs.get('agent_type', 'base')  # For environment integration
-        
-        # BDI model
-        self.bdi = BDI(
-            beliefs=kwargs.get('initial_beliefs', {}),
-            desires=kwargs.get('initial_desires', []),
-            intentions=[]
-        )
-        
-        # Execution context
+        self.agent_type = kwargs.get("agent_type", "base")
+
+        # Initial beliefs/desires – toujours dict / list
+        init_beliefs = _ensure_dict(kwargs.get("initial_beliefs"), context="initial_beliefs")
+        init_desires = kwargs.get("initial_desires") or []
+        if isinstance(init_desires, str):
+            init_desires = [init_desires]
+
+        self.bdi = BDI(beliefs=init_beliefs, desires=init_desires, intentions=[])
+
+        # Context & tools
         self.context = AgentContext(agent_id=agent_id)
-        
-        # Tools
         self.tool_service = ToolService()
-        self.tools = {}
+        self.tools: Dict[str, Any] = {}
         self._load_tools()
-        
+
         # Runtime state
         self._running = False
-        self._tasks = asyncio.Queue()
-        self._message_queue = asyncio.Queue()
-        
-        # Performance metrics
-        self.metrics = {
+        self._tasks: asyncio.Queue[Any] = asyncio.Queue()
+        self._message_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        self.metrics: Dict[str, Any] = {
             "actions_executed": 0,
             "messages_processed": 0,
             "tasks_completed": 0,
             "errors": 0,
             "start_time": None,
-            "total_runtime": 0
+            "total_runtime": 0,
         }
-    
-    def _load_tools(self):
-        """Load tools based on capabilities"""
-        for capability in self.capabilities:
-            tools = self.tool_service.get_tools_for_capability(capability)
-            self.tools.update(tools)
-    
+
+    # ---------------------------------------------------------------- utilities
+    def _load_tools(self) -> None:
+        for cap in self.capabilities:
+            self.tools.update(self.tool_service.get_tools_for_capability(cap))
+
+    # ---------------------------------------------------------------- abstract API
     @abstractmethod
     async def perceive(self, environment: Dict[str, Any]) -> Dict[str, Any]:
-        """Perceive environment and extract relevant information"""
-    
+        ...
+
     @abstractmethod
     async def deliberate(self) -> List[str]:
-        """Deliberate and form intentions based on beliefs and desires"""
-    
+        ...
+
     @abstractmethod
     async def act(self) -> List[Dict[str, Any]]:
-        """Execute actions based on intentions"""
-    
-    async def update_beliefs(self, new_beliefs: Dict[str, Any]):
-        """Update agent's beliefs"""
-        # Ensure new_beliefs is a dict
-        if isinstance(new_beliefs, str):
-            try:
-                new_beliefs = json.loads(new_beliefs)
-            except json.JSONDecodeError:
-                new_beliefs = {"belief_update": new_beliefs}
-                logger.warning(f"Received string for beliefs, wrapped in dict")
-        elif not isinstance(new_beliefs, dict):
-            logger.error(f"Invalid beliefs type: {type(new_beliefs)}")
-            return
-        
-        self.bdi.beliefs.update(new_beliefs)
-        logger.debug(f"Agent {self.name} updated beliefs: {new_beliefs}")
-    
-    async def add_desire(self, desire: str):
-        """Add a new desire/goal"""
+        ...
+
+    @abstractmethod
+    async def handle_message(self, message: Any):
+        ...
+
+    @abstractmethod
+    async def handle_task(self, task: Any):
+        ...
+
+    # ---------------------------------------------------------------- belief/goal mgmt
+    async def update_beliefs(self, new_beliefs: Any) -> None:
+        new_dict = _ensure_dict(new_beliefs, context="update_beliefs")
+        # Assure que self.bdi.beliefs est un dict
+        if not isinstance(self.bdi.beliefs, dict):
+            logger.error(
+                "Beliefs corrupted (type %s). Resetting to dict.", type(self.bdi.beliefs)
+            )
+            self.bdi.beliefs = {}
+        self.bdi.beliefs.update(new_dict)
+        logger.debug("Agent %s beliefs updated: %s", self.name, new_dict)
+
+    async def add_desire(self, desire: str) -> None:
         if desire not in self.bdi.desires:
             self.bdi.desires.append(desire)
-            logger.debug(f"Agent {self.name} added desire: {desire}")
-    
-    async def commit_to_intention(self, intention: str):
-        """Commit to an intention"""
+            logger.debug("Agent %s new desire: %s", self.name, desire)
+
+    async def commit_to_intention(self, intention: str) -> None:
         if intention not in self.bdi.intentions:
             self.bdi.intentions.append(intention)
-            logger.debug(f"Agent {self.name} committed to intention: {intention}")
-    
-    async def drop_intention(self, intention: str):
-        """Drop an intention"""
+            logger.debug("Agent %s intention committed: %s", self.name, intention)
+
+    async def drop_intention(self, intention: str) -> None:
         if intention in self.bdi.intentions:
             self.bdi.intentions.remove(intention)
-            logger.debug(f"Agent {self.name} dropped intention: {intention}")
-    
-    async def run(self):
-        """Main agent execution loop"""
+            logger.debug("Agent %s intention dropped: %s", self.name, intention)
+
+    # ---------------------------------------------------------------- main loop
+    async def run(self) -> None:
         self._running = True
         self.metrics["start_time"] = datetime.utcnow()
-        
-        logger.info(f"Agent {self.name} starting...")
-        
-        # Track BDI cycle timing
-        last_bdi_cycle = asyncio.get_event_loop().time()  # Start with current time to delay first BDI cycle
-        bdi_cycle_interval = 5.0  # Run BDI cycle every 5 seconds
-        
+        logger.info("Agent %s starting…", self.name)
+
+        last_bdi_cycle = asyncio.get_event_loop().time()
+        bdi_interval = 5.0  # seconds
+        iteration = 0
+
         try:
-            iteration = 0
             while self._running:
                 iteration += 1
-                current_time = asyncio.get_event_loop().time()
-                
-                # Debug every 10 iterations
-                if iteration % 10 == 0:
-                    logger.info(f"Agent {self.name} loop iteration {iteration}, queue size: {self._message_queue.qsize()}")
-                
-                # ALWAYS process messages first (high priority)
+
+                # High‑priority message processing
                 if not self._message_queue.empty():
-                    logger.info(f"Agent {self.name} has {self._message_queue.qsize()} messages to process")
                     await self._process_messages()
-                else:
-                    logger.debug(f"Agent {self.name} no messages in queue")
-                
-                # Check for tasks
+
+                # Task processing
                 await self._process_tasks()
-                
-                # BDI cycle - run periodically, not every loop iteration
-                if current_time - last_bdi_cycle > bdi_cycle_interval:
-                    logger.info(f"Agent {self.name} starting BDI cycle")
+
+                # Periodic BDI cycle
+                now = asyncio.get_event_loop().time()
+                if now - last_bdi_cycle >= bdi_interval:
                     await self._bdi_cycle()
-                    last_bdi_cycle = current_time
-                
-                # Small delay to prevent CPU spinning
+                    last_bdi_cycle = now
+
+                if iteration % 10 == 0:
+                    logger.debug(
+                        "Agent %s iter=%d, msgs=%d, tasks=%d",
+                        self.name,
+                        iteration,
+                        self._message_queue.qsize(),
+                        self._tasks.qsize(),
+                    )
+
                 await asyncio.sleep(0.1)
-                
-        except Exception as e:
-            logger.error(f"Error in agent {self.name} loop: {str(e)}")
+
+        except Exception as exc:
+            logger.exception("Agent %s loop error: %s", self.name, exc)
             self.metrics["errors"] += 1
             raise
         finally:
-            runtime = datetime.utcnow() - self.metrics["start_time"]
-            self.metrics["total_runtime"] += runtime.total_seconds()
-            logger.info(f"Agent {self.name} stopped")
-    
-    async def _bdi_cycle(self):
-        """Execute one BDI cycle"""
+            runtime = (datetime.utcnow() - self.metrics["start_time"]).total_seconds()
+            self.metrics["total_runtime"] += runtime
+            logger.info("Agent %s stopped – runtime %.2fs", self.name, runtime)
+
+    # ---------------------------------------------------------------- BDI cycle
+    async def _bdi_cycle(self) -> None:
         try:
-            logger.debug(f"Agent {self.name} starting BDI cycle")
-            
-            # Perceive
+            # 1) Perceive
             perceptions = await self.perceive(self.context.environment)
             await self.update_beliefs(perceptions)
-            
-            # Deliberate
-            new_intentions = await self.deliberate()
-            for intention in new_intentions:
-                await self.commit_to_intention(intention)
-            
-            # Act
+
+            # 2) Deliberate
+            intentions = await self.deliberate()
+            for intent in intentions:
+                await self.commit_to_intention(intent)
+
+            # 3) Act
             if self.bdi.intentions:
-                actions = await self.act()
-                
-                # Ensure actions is a list
-                if actions is None:
-                    actions = []
-                elif isinstance(actions, str):
+                actions = await self.act() or []
+                # Normalise actions
+                if isinstance(actions, str):
                     try:
                         actions = json.loads(actions)
-                        if not isinstance(actions, list):
-                            actions = [actions]
-                    except:
+                    except json.JSONDecodeError:
                         actions = [{"type": "execute", "description": actions}]
-                elif isinstance(actions, dict):
+                if isinstance(actions, dict):
                     actions = [actions]
-                elif not isinstance(actions, list):
-                    logger.warning(f"Invalid actions type: {type(actions)}")
+                if not isinstance(actions, list):
+                    logger.warning("Invalid actions type %s, ignoring", type(actions))
                     actions = []
-                
-                for action in actions:
-                    await self._execute_action(action)
-            
-            logger.debug(f"Agent {self.name} completed BDI cycle")
-                    
-        except Exception as e:
-            logger.error(f"Error in BDI cycle for agent {self.name}: {str(e)}")
+
+                for act in actions:
+                    await self._execute_action(act)
+
+        except Exception as exc:
+            logger.exception("Error in BDI cycle for %s: %s", self.name, exc)
             self.metrics["errors"] += 1
-    
-    async def _execute_action(self, action: Dict[str, Any]):
-        """Execute a single action"""
-        # Ensure action is a dict
+
+    # ---------------------------------------------------------------- execute
+    async def _execute_action(self, action: Any) -> None:
         if isinstance(action, str):
             action = {"type": "execute", "description": action}
-            logger.warning(f"Received string instead of dict for action, wrapped in dict")
-        elif not isinstance(action, dict):
-            logger.error(f"Invalid action type: {type(action)}")
+
+        if not isinstance(action, dict):
+            logger.error("Action must be dict or str, got %s", type(action))
             return
-        
+
         action_type = action.get("type")
-        
         if action_type == "tool_call":
             await self._execute_tool_call(action)
         elif action_type == "send_message":
             await self._send_message(action)
         elif action_type == "update_belief":
-            await self.update_beliefs(action.get("beliefs", {}))
+            await self.update_beliefs(action.get("beliefs"))
         else:
-            logger.warning(f"Unknown action type: {action_type}")
-        
+            logger.warning("Unknown action type: %s", action_type)
+
         self.metrics["actions_executed"] += 1
-    
-    async def _execute_tool_call(self, action: Dict[str, Any]):
-        """Execute a tool call"""
+
+    async def _execute_tool_call(self, action: Dict[str, Any]) -> None:
         tool_name = action.get("tool")
-        params = action.get("params", {})
-        
-        if tool_name not in self.tools:
-            logger.error(f"Tool {tool_name} not found")
+        params = _ensure_dict(action.get("params"), context="tool_params")
+
+        tool = self.tools.get(tool_name)
+        if not tool:
+            logger.error("Tool %s not found for agent %s", tool_name, self.name)
             return
-        
+
         try:
-            tool = self.tools[tool_name]
             result = await tool.execute(params)
-            
-            # Update beliefs with result
-            await self.update_beliefs({
-                f"last_{tool_name}_result": result.data,
-                f"last_{tool_name}_success": result.success
-            })
-            
-        except Exception as e:
-            logger.error(f"Tool execution failed: {str(e)}")
-            await self.update_beliefs({
-                f"last_{tool_name}_error": str(e)
-            })
-    
-    async def _send_message(self, action: Dict[str, Any]):
-        """Send a message to another agent"""
-        # Implementation depends on messaging system
-    
-    async def _process_messages(self):
-        """Process incoming messages"""
+            await self.update_beliefs(
+                {
+                    f"last_{tool_name}_result": result.data,
+                    f"last_{tool_name}_success": result.success,
+                }
+            )
+        except Exception as exc:
+            logger.exception("Tool %s failed: %s", tool_name, exc)
+            await self.update_beliefs({f"last_{tool_name}_error": str(exc)})
+
+    async def _send_message(self, action: Dict[str, Any]) -> None:
+        # Implement according to messaging subsystem
+        pass
+
+    # ---------------------------------------------------------------- queues
+    async def _process_messages(self) -> None:
         while not self._message_queue.empty():
-            message = await self._message_queue.get()
-            logger.info(f"Agent {self.name} processing message from queue")
+            msg = await self._message_queue.get()
             try:
-                await self.handle_message(message)
+                await self.handle_message(msg)
                 self.metrics["messages_processed"] += 1
-                logger.info(f"Agent {self.name} successfully processed message")
-            except Exception as e:
-                logger.error(f"Error processing message: {str(e)}", exc_info=True)
+            except Exception as exc:
+                logger.exception("handle_message error: %s", exc)
                 self.metrics["errors"] += 1
-    
-    async def _process_tasks(self):
-        """Process assigned tasks"""
+
+    async def _process_tasks(self) -> None:
         while not self._tasks.empty():
             task = await self._tasks.get()
             self.context.current_task = task
             try:
                 await self.handle_task(task)
                 self.metrics["tasks_completed"] += 1
-            except Exception as e:
-                logger.error(f"Error processing task: {str(e)}")
+            except Exception as exc:
+                logger.exception("handle_task error: %s", exc)
                 self.metrics["errors"] += 1
             finally:
                 self.context.current_task = None
-    
-    @abstractmethod
-    async def handle_message(self, message: Any):
-        """Handle incoming message"""
-    
-    @abstractmethod
-    async def handle_task(self, task: Any):
-        """Handle assigned task"""
-    
-    async def receive_message(self, message: Any):
-        """Receive a message (called by environment)"""
-        logger.info(f"Agent {self.name} received message, adding to queue")
+
+    # ---------------------------------------------------------------- runtime control
+    async def receive_message(self, message: Any) -> None:
         await self._message_queue.put(message)
-        logger.info(f"Agent {self.name} message queue size: {self._message_queue.qsize()}")
-    
-    async def add_task(self, task: Any):
-        """Add a task to the agent's queue"""
+
+    async def add_task(self, task: Any) -> None:
         await self._tasks.put(task)
-    
-    async def stop(self):
-        """Stop agent execution"""
+
+    async def stop(self) -> None:
         self._running = False
-    
+
+    # ---------------------------------------------------------------- metrics / config
     async def get_metrics(self) -> Dict[str, Any]:
-        """Get agent performance metrics"""
         return {
             **self.metrics,
-            "current_beliefs": len(self.bdi.beliefs),
-            "current_desires": len(self.bdi.desires),
-            "current_intentions": len(self.bdi.intentions),
-            "available_tools": len(self.tools),
-            "working_memory_size": len(self.context.working_memory)
+            "belief_count": len(self.bdi.beliefs),
+            "desire_count": len(self.bdi.desires),
+            "intention_count": len(self.bdi.intentions),
+            "tool_count": len(self.tools),
+            "working_memory": len(self.context.working_memory),
         }
-    
-    async def update_configuration(self, config: Dict[str, Any]):
-        """Update agent configuration at runtime"""
-        # Update relevant configuration
+
+    async def update_configuration(self, config: Dict[str, Any]) -> None:
         if "capabilities" in config:
             self.capabilities = config["capabilities"]
             self._load_tools()
-        
-        # Allow subclasses to handle specific updates
         await self._handle_config_update(config)
-    
-    async def _handle_config_update(self, config: Dict[str, Any]):
-        """Handle configuration updates (override in subclasses)"""
-    
-    def __repr__(self):
+
+    async def _handle_config_update(self, config: Dict[str, Any]) -> None:
+        # Override in subclasses
+        pass
+
+    # ---------------------------------------------------------------- repr
+    def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.name} ({self.role})>"
